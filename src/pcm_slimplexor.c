@@ -159,9 +159,6 @@ static snd_pcm_sframes_t callback_transfer(snd_pcm_ioplug_t *io, const snd_pcm_c
 		for (unsigned int j = 0; j < 4 /* TODO: frame_size */; j++)
 		{
 			plugin_data->target_buffer[target_position] = *pcm_data;
-
-			printf(" %c", (char) *pcm_data);
-
 			target_position++;
 			pcm_data++;
 		}
@@ -173,7 +170,6 @@ static snd_pcm_sframes_t callback_transfer(snd_pcm_ioplug_t *io, const snd_pcm_c
 		/* marking frame as containing data in the last byte of the last channel */
 		plugin_data->target_buffer[target_position - 1] = 1;
 	}
-	printf("\n");
 
 	/* if there is anything to be written to the target device */
 	if (frames > 0)
@@ -279,41 +275,34 @@ static int setup_target_device(plugin_data_t* plugin_data, const char* device, u
     if (!error)
     {
     	error = snd_pcm_open(&plugin_data->target_pcm, device, SND_PCM_STREAM_PLAYBACK, 0);
-		ERR("1error=%s", snd_strerror(error));
     }
 
     /* allocating hardware parameters object and fill it with default values */
     if (!error)
     {
 		error = snd_pcm_hw_params_malloc(&plugin_data->target_hw_params);
-		ERR("2error=%s", snd_strerror(error));
     }
     if (!error)
     {
 		error = snd_pcm_hw_params_any(plugin_data->target_pcm, plugin_data->target_hw_params);
-		ERR("3error=%s", snd_strerror(error));
     }
 
     /* setting target device parameters */
     if (!error)
     {
 		error = snd_pcm_hw_params_set_access(plugin_data->target_pcm, plugin_data->target_hw_params, SND_PCM_ACCESS_RW_INTERLEAVED);
-		ERR("4error=%s", snd_strerror(error));
     }
 	if (!error)
 	{
 		error = snd_pcm_hw_params_set_format(plugin_data->target_pcm, plugin_data->target_hw_params, SND_PCM_FORMAT_S16_LE);
-		ERR("5error=%s", snd_strerror(error));
 	}
 	if (!error)
 	{
 		error = snd_pcm_hw_params_set_channels(plugin_data->target_pcm, plugin_data->target_hw_params, /* TODO: ... */ 3);
-		ERR("6error=%s", snd_strerror(error));
 	}
 	if (!error)
 	{
 		error = snd_pcm_hw_params_set_rate(plugin_data->target_pcm, plugin_data->target_hw_params, rate, 0);
-		ERR("1error=%s", snd_strerror(error));
 	}
 
 	/* defining buffer size: bufer = period size * number of periods */
@@ -400,7 +389,7 @@ SND_PCM_PLUGIN_DEFINE_FUNC(slimplexor)
     if (!error)
     {
 		plugin_data->alsa_data.version      = SND_PCM_IOPLUG_VERSION;
-		plugin_data->alsa_data.name         = "SlimPlexor - An ALSA Plugin by SlimStreamer";
+		plugin_data->alsa_data.name         = "SlimPlexor - An ALSA plugin used by SlimStreamer";
 		plugin_data->alsa_data.callback     = &callbacks;
 		plugin_data->alsa_data.private_data = plugin_data;
 
