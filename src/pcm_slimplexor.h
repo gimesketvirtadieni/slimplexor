@@ -36,12 +36,9 @@ typedef struct plugin_data
 	unsigned int         rate_device_map_size;
 	rate_device_map_t*   rate_device_map;
 	snd_pcm_sframes_t    pointer;
-
 	char*                target_device;
 	unsigned int         target_channels;
 	snd_pcm_t*           target_pcm;
-	snd_pcm_hw_params_t* target_hw_params;
-	snd_pcm_sw_params_t* target_sw_params;
 	unsigned char*       target_buffer;
 	snd_pcm_uframes_t    target_buffer_last;
 	snd_pcm_uframes_t    target_buffer_current;
@@ -57,7 +54,7 @@ static int               callback_prepare(snd_pcm_ioplug_t *io);
 static snd_pcm_sframes_t callback_transfer(snd_pcm_ioplug_t *io, const snd_pcm_channel_area_t *areas, snd_pcm_uframes_t offset, snd_pcm_uframes_t size);
 static void              release_resources(plugin_data_t* plugin_data);
 static int               setup_hw_params(snd_pcm_ioplug_t *io);
-static int               setup_target_device(plugin_data_t* plugin_data, const char* device, unsigned int rate);
+static int setup_target_device(plugin_data_t* plugin_data, const char* device, unsigned int channels, unsigned int rate);
 
 
 const unsigned int supported_accesses[] =
@@ -96,5 +93,6 @@ const snd_pcm_ioplug_callback_t callbacks = {
 };
 
 
-static size_t period_size = 512;
-static size_t buffer_size = 1024;
+/* TODO: use latency configurable value instead */
+static size_t period_size_bytes = 1024;
+static size_t buffer_size_bytes = 2048;

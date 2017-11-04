@@ -102,7 +102,7 @@ static int callback_prepare(snd_pcm_ioplug_t *io)
 	if (!error)
 	{
 		/* adding extra space for one extra channel */
-		size_t target_size = period_size + (period_size / io->channels);
+		size_t target_size = period_size_bytes + (period_size_bytes / io->channels);
 		plugin_data->target_buffer = (unsigned char*) calloc(1, target_size);
 		if (!plugin_data->target_buffer)
 		{
@@ -110,7 +110,7 @@ static int callback_prepare(snd_pcm_ioplug_t *io)
 		}
 
 		/* setting index of the last frame in the buffer */
-		plugin_data->target_buffer_last = target_size / 6;  /* TODO: bytes per frame */
+		plugin_data->target_buffer_last = target_size / 6;  /* TODO: io->channels *  bytes per frame */
 	}
 
 	/* resetting hw buffer pointer */
@@ -119,7 +119,7 @@ static int callback_prepare(snd_pcm_ioplug_t *io)
 	/* setting up target device */
 	if (!error)
 	{
-		error = setup_target_device(plugin_data, device, io->rate);
+		error = setup_target_device(plugin_data, device, io->channels + 1, io->rate);
 		if (error)
 		{
 			ERR("Could not setup target device=%s, error=%s", device, snd_strerror(error));
@@ -174,27 +174,24 @@ static snd_pcm_sframes_t callback_transfer(snd_pcm_ioplug_t *io, const snd_pcm_c
 	/* if there is anything to be written to the target device */
 	if (frames > 0)
 	{
-		snd_pcm_sframes_t written_frames = snd_pcm_writei(plugin_data->target_pcm, plugin_data->target_buffer, frames);
-		DBG("written_frames=%li", written_frames);
-		if (written_frames < 0 && written_frames != -EAGAIN)
+		snd_pcm_sframes_t result = snd_pcm_writei(plugin_data->target_pcm, plugin_data->target_buffer, frames);
+
+		/* no need to restore from an error in case of -EAGAIN */
+		if (result < 0 && result != -EAGAIN)
 		{
-			written_frames = snd_pcm_prepare(plugin_data->target_pcm);
-			if (written_frames < 0)
+			result = snd_pcm_prepare(plugin_data->target_pcm);
+			if (result < 0)
 			{
-				printf("restore error: %s\n", snd_strerror(written_frames));
-			}
-			else
-			{
-				printf("restored!");
+				DBG("restore error: %s", snd_strerror(result));
 			}
 		}
+		else
+		{
+			/* adjusting buffer pointers */
+			plugin_data->target_buffer_current -= frames;
+			plugin_data->pointer               += frames;
+		}
 	}
-
-	/* TODO: pretending that #size frames was written to the target device */
-	plugin_data->target_buffer_current -= frames;
-
-	/* updating pointer so it can be used from a pointer callback */
-	plugin_data->pointer += frames;
 
 	return frames;
 }
@@ -207,14 +204,6 @@ static void release_resources(plugin_data_t* plugin_data)
 		if (!plugin_data->target_buffer)
 		{
 			free(plugin_data->target_buffer);
-		}
-		if (!plugin_data->target_sw_params)
-		{
-			snd_pcm_sw_params_free(plugin_data->target_sw_params);
-		}
-		if (!plugin_data->target_hw_params)
-		{
-			snd_pcm_hw_params_free(plugin_data->target_hw_params);
 		}
 		if (!plugin_data->rate_device_map)
 		{
@@ -256,20 +245,22 @@ static int setup_hw_params(snd_pcm_ioplug_t *io)
     /* defining buffer size: bufer = period size * number of periods */
     if (!error)
     {
-		error = snd_pcm_ioplug_set_param_minmax(io, SND_PCM_IOPLUG_HW_PERIOD_BYTES, period_size, period_size);
+		error = snd_pcm_ioplug_set_param_minmax(io, SND_PCM_IOPLUG_HW_PERIOD_BYTES, period_size_bytes, period_size_bytes);
     }
 	if (!error)
 	{
-		error = snd_pcm_ioplug_set_param_minmax(io, SND_PCM_IOPLUG_HW_BUFFER_BYTES, buffer_size, buffer_size);
+		error = snd_pcm_ioplug_set_param_minmax(io, SND_PCM_IOPLUG_HW_BUFFER_BYTES, buffer_size_bytes, buffer_size_bytes);
 	}
 
     return error;
 }
 
 
-static int setup_target_device(plugin_data_t* plugin_data, const char* device, unsigned int rate)
+static int setup_target_device(plugin_data_t* plugin_data, const char* device, unsigned int channels, unsigned int rate)
 {
-	int error = 0;
+	int                  error     = 0;
+	snd_pcm_hw_params_t* hw_params = NULL;
+	snd_pcm_sw_params_t* sw_params = NULL;
 
     /* opening the target device */
     if (!error)
@@ -280,71 +271,77 @@ static int setup_target_device(plugin_data_t* plugin_data, const char* device, u
     /* allocating hardware parameters object and fill it with default values */
     if (!error)
     {
-		error = snd_pcm_hw_params_malloc(&plugin_data->target_hw_params);
+		error = snd_pcm_hw_params_malloc(&hw_params);
     }
     if (!error)
     {
-		error = snd_pcm_hw_params_any(plugin_data->target_pcm, plugin_data->target_hw_params);
+		error = snd_pcm_hw_params_any(plugin_data->target_pcm, hw_params);
     }
 
     /* setting target device parameters */
     if (!error)
     {
-		error = snd_pcm_hw_params_set_access(plugin_data->target_pcm, plugin_data->target_hw_params, SND_PCM_ACCESS_RW_INTERLEAVED);
+		error = snd_pcm_hw_params_set_access(plugin_data->target_pcm, hw_params, SND_PCM_ACCESS_RW_INTERLEAVED);
     }
 	if (!error)
 	{
-		error = snd_pcm_hw_params_set_format(plugin_data->target_pcm, plugin_data->target_hw_params, SND_PCM_FORMAT_S16_LE);
+		error = snd_pcm_hw_params_set_format(plugin_data->target_pcm, hw_params, SND_PCM_FORMAT_S16_LE);
 	}
 	if (!error)
 	{
-		error = snd_pcm_hw_params_set_channels(plugin_data->target_pcm, plugin_data->target_hw_params, /* TODO: ... */ 3);
+		error = snd_pcm_hw_params_set_channels(plugin_data->target_pcm, hw_params, channels);
 	}
 	if (!error)
 	{
-		error = snd_pcm_hw_params_set_rate(plugin_data->target_pcm, plugin_data->target_hw_params, rate, 0);
+		error = snd_pcm_hw_params_set_rate(plugin_data->target_pcm, hw_params, rate, 0);
 	}
 
 	/* defining buffer size: bufer = period size * number of periods */
     if (!error)
     {
-		error = snd_pcm_hw_params_set_period_size(plugin_data->target_pcm, plugin_data->target_hw_params, period_size, 0);
+		error = snd_pcm_hw_params_set_period_size(plugin_data->target_pcm, hw_params, period_size_bytes, 0);
     }
     if (!error)
     {
-		error = snd_pcm_hw_params_set_buffer_size(plugin_data->target_pcm, plugin_data->target_hw_params, buffer_size);
+		error = snd_pcm_hw_params_set_buffer_size(plugin_data->target_pcm, hw_params, buffer_size_bytes);
     }
 
 	/* saving hardware parameters for target device */
     if (!error)
 	{
-		error = snd_pcm_hw_params(plugin_data->target_pcm, plugin_data->target_hw_params);
+		error = snd_pcm_hw_params(plugin_data->target_pcm, hw_params);
+	}
+	if (!hw_params)
+	{
+		snd_pcm_hw_params_free(hw_params);
 	}
 
     /* allocating software parameters object and fill it with default values */
     if (!error)
 	{
-		error = snd_pcm_sw_params_malloc(&plugin_data->target_sw_params);
+		error = snd_pcm_sw_params_malloc(&sw_params);
 	}
     if (!error)
 	{
-    	error = snd_pcm_sw_params_current(plugin_data->target_pcm, plugin_data->target_sw_params);
-	}
-
-    /* TODO: set available min and threshold */
-    if (!error)
-	{
-        error = snd_pcm_sw_params_set_start_threshold(plugin_data->target_pcm, plugin_data->target_sw_params, buffer_size);
+    	error = snd_pcm_sw_params_current(plugin_data->target_pcm, sw_params);
 	}
     if (!error)
 	{
-        error = snd_pcm_sw_params_set_avail_min(plugin_data->target_pcm, plugin_data->target_sw_params, period_size);
+        error = snd_pcm_sw_params_set_start_threshold(plugin_data->target_pcm, sw_params, buffer_size_bytes);
+	}
+    if (!error)
+	{
+        error = snd_pcm_sw_params_set_avail_min(plugin_data->target_pcm, sw_params, period_size_bytes);
 	}
 
     /* saving software parameters for target device */
 	if (!error)
 	{
-		error = snd_pcm_sw_params(plugin_data->target_pcm, plugin_data->target_sw_params);
+		error = snd_pcm_sw_params(plugin_data->target_pcm, sw_params);
+	}
+	if (sw_params)
+	{
+		snd_pcm_sw_params_free(sw_params);
 	}
 
 	return error;
