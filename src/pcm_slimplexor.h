@@ -17,7 +17,7 @@
 #include <stdint.h>  /* types like u_int16_t, etc. */
 
 
-#define DBG(fmt, arg...) printf("DEBUG: %s: "   fmt "\n" , __FUNCTION__ , ## arg)
+#define DBG(fmt, arg...) /* TODO: parametrize printf("DEBUG: %s: "   fmt "\n" , __FUNCTION__ , ## arg) */
 #define ERR(fmt, arg...) printf("ERROR: %s: "   fmt "\n" , __FUNCTION__ , ## arg)
 #define WRN(fmt, arg...) printf("WARNING: %s: " fmt "\n" , __FUNCTION__ , ## arg)
 #define ARRAY_SIZE(a) (sizeof(a)/sizeof((a)[0]))
