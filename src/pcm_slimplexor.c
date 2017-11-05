@@ -25,12 +25,12 @@ static int callback_close(snd_pcm_ioplug_t *io)
 		error = snd_pcm_drain(plugin_data->target_pcm);
 		if (error < 0)
 		{
-			DBG("Error while draining target device (%i)", error);
+			DBG("Error while draining target device: %s", snd_strerror(error));
 		}
 		error = snd_pcm_close(plugin_data->target_pcm);
 		if (error < 0)
 		{
-			DBG("Error while closing target device (%i)", error);
+			DBG("Error while closing target device: %s", snd_strerror(error));
 		}
 	}
 
@@ -45,23 +45,27 @@ static int callback_hw_params(snd_pcm_ioplug_t *io, snd_pcm_hw_params_t *params)
 {
     DBG("");
 
+    int            error       = 0;
+    plugin_data_t* plugin_data = (plugin_data_t*)io->private_data;
+
+	if (!error)
+	{
+	    error = snd_pcm_hw_params_get_period_size(params, &plugin_data->target_period_size, 0);
+		if (error)
+		{
+			ERR("Could not get period size value: %s", snd_strerror(error));
+		}
+	}
+	if (!error)
+	{
+	    error = snd_pcm_hw_params_get_periods(params, &plugin_data->target_periods, 0);
+		if (error)
+		{
+			ERR("Could not get buffer size value: %s", snd_strerror(error));
+		}
+	}
+
     return 0;
-}
-
-
-static int callback_start(snd_pcm_ioplug_t *io)
-{
-	DBG("");
-
-	return 0;
-}
-
-
-static int callback_stop(snd_pcm_ioplug_t *io)
-{
-	DBG("");
-
-	return 0;
 }
 
 
@@ -98,11 +102,11 @@ static int callback_prepare(snd_pcm_ioplug_t *io)
     }
     DBG("Target device=%s", device);
 
-	/* allocating buffer required to transfer data to target device */
+    /* allocating buffer required to transfer data to target device */
 	if (!error)
 	{
 		/* adding extra space for one extra channel */
-		size_t target_size = period_size_bytes + (period_size_bytes / io->channels);
+		size_t target_size = plugin_data->target_period_size * 6;  /* TODO: channels *  bytes per frame */
 		plugin_data->target_buffer = (unsigned char*) calloc(1, target_size);
 		if (!plugin_data->target_buffer)
 		{
@@ -110,7 +114,7 @@ static int callback_prepare(snd_pcm_ioplug_t *io)
 		}
 
 		/* setting index of the last frame in the buffer */
-		plugin_data->target_buffer_last = target_size / 6;  /* TODO: io->channels *  bytes per frame */
+		//plugin_data->target_buffer_last = plugin_data->target_period_size;
 	}
 
 	/* resetting hw buffer pointer */
@@ -136,12 +140,36 @@ static int callback_prepare(snd_pcm_ioplug_t *io)
 }
 
 
+static int callback_start(snd_pcm_ioplug_t *io)
+{
+	DBG("");
+
+	return 0;
+}
+
+
+static int callback_stop(snd_pcm_ioplug_t *io)
+{
+	DBG("");
+
+	return 0;
+}
+
+
+static int callback_sw_params(snd_pcm_ioplug_t *io, snd_pcm_sw_params_t *params)
+{
+    DBG("");
+
+    return 0;
+}
+
+
 static snd_pcm_sframes_t callback_transfer(snd_pcm_ioplug_t *io, const snd_pcm_channel_area_t *areas, snd_pcm_uframes_t offset, snd_pcm_uframes_t total_frames)
 {
 	DBG("offset = %lu, size = %lu", offset, total_frames);
 
 	plugin_data_t*    plugin_data     = (plugin_data_t*)io->private_data;
-	snd_pcm_uframes_t frames          = plugin_data->target_buffer_last - plugin_data->target_buffer_current;
+	snd_pcm_uframes_t frames          = plugin_data->target_period_size - plugin_data->target_buffer_current;
 	unsigned char*    pcm_data        = areas[offset].addr + (areas[offset].first >> 3);
 	unsigned int      bytes_per_frame = 6;  /* TODO: ...*/
 
@@ -151,6 +179,13 @@ static snd_pcm_sframes_t callback_transfer(snd_pcm_ioplug_t *io, const snd_pcm_c
 		frames = total_frames;
 	}
 
+	/* TODO: write in frames or periods? */
+	for (size_t i = 0; i < plugin_data->target_period_size * bytes_per_frame; i++)
+	{
+		plugin_data->target_buffer[i] = 0;
+	}
+
+	/* TODO: this is not safe in case total_frame > target buffer */
 	/* processing frame-by-frame */
 	for (snd_pcm_uframes_t i = 0; i < frames; i++)
 	{
@@ -174,7 +209,8 @@ static snd_pcm_sframes_t callback_transfer(snd_pcm_ioplug_t *io, const snd_pcm_c
 	/* if there is anything to be written to the target device */
 	if (frames > 0)
 	{
-		snd_pcm_sframes_t result = snd_pcm_writei(plugin_data->target_pcm, plugin_data->target_buffer, frames);
+		/* always writing the whole period as ALSA 'thinks' in periods, not in frames  */
+		snd_pcm_sframes_t result = snd_pcm_writei(plugin_data->target_pcm, plugin_data->target_buffer, plugin_data->target_period_size);
 
 		/* no need to restore from an error in case of -EAGAIN */
 		if (result < 0 && result != -EAGAIN)
@@ -182,7 +218,7 @@ static snd_pcm_sframes_t callback_transfer(snd_pcm_ioplug_t *io, const snd_pcm_c
 			result = snd_pcm_prepare(plugin_data->target_pcm);
 			if (result < 0)
 			{
-				DBG("restore error: %s", snd_strerror(result));
+				DBG("Restore error: %s", snd_strerror(result));
 			}
 		}
 		else
@@ -249,7 +285,7 @@ static int setup_hw_params(snd_pcm_ioplug_t *io)
     }
 	if (!error)
 	{
-		error = snd_pcm_ioplug_set_param_minmax(io, SND_PCM_IOPLUG_HW_BUFFER_BYTES, buffer_size_bytes, buffer_size_bytes);
+		error = snd_pcm_ioplug_set_param_minmax(io, SND_PCM_IOPLUG_HW_PERIODS, periods, periods);
 	}
 
     return error;
@@ -299,11 +335,11 @@ static int setup_target_device(plugin_data_t* plugin_data, const char* device, u
 	/* defining buffer size: bufer = period size * number of periods */
     if (!error)
     {
-		error = snd_pcm_hw_params_set_period_size(plugin_data->target_pcm, hw_params, period_size_bytes, 0);
+		error = snd_pcm_hw_params_set_period_size(plugin_data->target_pcm, hw_params, plugin_data->target_period_size, 0);
     }
     if (!error)
     {
-		error = snd_pcm_hw_params_set_buffer_size(plugin_data->target_pcm, hw_params, buffer_size_bytes);
+		error = snd_pcm_hw_params_set_periods(plugin_data->target_pcm, hw_params, plugin_data->target_periods, 0);
     }
 
 	/* saving hardware parameters for target device */
@@ -327,11 +363,11 @@ static int setup_target_device(plugin_data_t* plugin_data, const char* device, u
 	}
     if (!error)
 	{
-        error = snd_pcm_sw_params_set_start_threshold(plugin_data->target_pcm, sw_params, buffer_size_bytes);
+        error = snd_pcm_sw_params_set_start_threshold(plugin_data->target_pcm, sw_params, plugin_data->target_period_size * plugin_data->target_periods);
 	}
     if (!error)
 	{
-        error = snd_pcm_sw_params_set_avail_min(plugin_data->target_pcm, sw_params, period_size_bytes);
+        error = snd_pcm_sw_params_set_avail_min(plugin_data->target_pcm, sw_params, plugin_data->target_period_size);
 	}
 
     /* saving software parameters for target device */
