@@ -171,7 +171,7 @@ static snd_pcm_sframes_t callback_transfer(snd_pcm_ioplug_t *io, const snd_pcm_c
 	plugin_data_t*    plugin_data     = (plugin_data_t*)io->private_data;
 	snd_pcm_uframes_t frames          = plugin_data->target_period_size - plugin_data->target_buffer_current;
 	unsigned char*    pcm_data        = areas[offset].addr + (areas[offset].first >> 3);
-	unsigned int      bytes_per_frame = 6;  /* TODO: ...*/
+	unsigned int      bytes_per_frame = 6;  /* TODO: ... */
 
 	/* adjusting amount of frames to be processed, which is max(available,provided) */
 	if (total_frames < frames)
@@ -179,14 +179,10 @@ static snd_pcm_sframes_t callback_transfer(snd_pcm_ioplug_t *io, const snd_pcm_c
 		frames = total_frames;
 	}
 
-	/* TODO: write in frames or periods? */
-	for (size_t i = 0; i < plugin_data->target_period_size * bytes_per_frame; i++)
-	{
-		plugin_data->target_buffer[i] = 0;
-	}
+	/* the whole buffer will be written so reseting it first */
+	memset(plugin_data->target_buffer, 0, plugin_data->target_period_size * bytes_per_frame);
 
-	/* TODO: this is not safe in case total_frame > target buffer */
-	/* processing frame-by-frame */
+	/* it is ok to process less frames than provided as ALSA will call this callback with the rest of data */
 	for (snd_pcm_uframes_t i = 0; i < frames; i++)
 	{
 		unsigned int target_position = plugin_data->target_buffer_current * bytes_per_frame;
@@ -221,11 +217,16 @@ static snd_pcm_sframes_t callback_transfer(snd_pcm_ioplug_t *io, const snd_pcm_c
 				DBG("Restore error: %s", snd_strerror(result));
 			}
 		}
+		else if (result == -EAGAIN)
+		{
+			/* it will make ALSA call transfer callback again with the same data */
+			frames = 0;
+		}
 		else
 		{
-			/* adjusting buffer pointers */
-			plugin_data->target_buffer_current -= frames;
-			plugin_data->pointer               += frames;
+			frames                              = result;
+			plugin_data->target_buffer_current -= result;
+			plugin_data->pointer               += result;
 		}
 	}
 
