@@ -17,7 +17,7 @@
 #include <stdint.h>  /* types like u_int16_t, etc. */
 
 
-#define DBG(fmt, arg...) /* TODO: parametrize  printf("DEBUG: %s: "   fmt "\n" , __FUNCTION__ , ## arg) */
+#define DBG(fmt, arg...) /* TODO: parametrize */ printf("DEBUG: %s: "   fmt "\n" , __FUNCTION__ , ## arg)
 #define ERR(fmt, arg...) printf("ERROR: %s: "   fmt "\n" , __FUNCTION__ , ## arg)
 #define WRN(fmt, arg...) printf("WARNING: %s: " fmt "\n" , __FUNCTION__ , ## arg)
 #define ARRAY_SIZE(a) (sizeof(a)/sizeof((a)[0]))
@@ -36,6 +36,9 @@ typedef struct plugin_data
 	unsigned int         rate_device_map_size;
 	rate_device_map_t*   rate_device_map;
 	snd_pcm_sframes_t    pointer;
+	snd_pcm_format_t     format;
+	int                  bytes_per_sample;
+	char*                device;
 	snd_pcm_uframes_t    target_period_size;
 	unsigned int         target_periods;
 	char*                target_device;
@@ -56,7 +59,7 @@ static int               callback_sw_params(snd_pcm_ioplug_t *io, snd_pcm_sw_par
 static snd_pcm_sframes_t callback_transfer(snd_pcm_ioplug_t *io, const snd_pcm_channel_area_t *areas, snd_pcm_uframes_t offset, snd_pcm_uframes_t size);
 static void              release_resources(plugin_data_t* plugin_data);
 static int               setup_hw_params(snd_pcm_ioplug_t *io);
-static int               setup_target_device(plugin_data_t* plugin_data, const char* device, unsigned int channels, unsigned int rate);
+static int               setup_target_device(plugin_data_t* plugin_data);
 
 
 const unsigned int supported_accesses[] =
@@ -67,7 +70,20 @@ const unsigned int supported_accesses[] =
 
 const unsigned int supported_formats[] =
 {
-	SND_PCM_FORMAT_S16_LE
+	SND_PCM_FORMAT_S8,
+	SND_PCM_FORMAT_U8,
+	SND_PCM_FORMAT_S16_LE,
+	SND_PCM_FORMAT_S16_BE,
+	SND_PCM_FORMAT_U16_LE,
+	SND_PCM_FORMAT_U16_BE,
+	SND_PCM_FORMAT_S24_LE,
+	SND_PCM_FORMAT_S24_BE,
+	SND_PCM_FORMAT_U24_LE,
+	SND_PCM_FORMAT_U24_BE,
+	SND_PCM_FORMAT_S32_LE,
+	SND_PCM_FORMAT_S32_BE,
+	SND_PCM_FORMAT_U32_LE,
+	SND_PCM_FORMAT_U32_BE
 };
 
 
