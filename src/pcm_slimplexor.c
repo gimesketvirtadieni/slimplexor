@@ -48,33 +48,14 @@ static int callback_hw_params(snd_pcm_ioplug_t *io, snd_pcm_hw_params_t *params)
     int            error       = 0;
     plugin_data_t* plugin_data = (plugin_data_t*)io->private_data;
 
+	/* setting up target device hardware parameters */
 	if (!error)
 	{
-	    error = snd_pcm_hw_params_get_period_size(params, &plugin_data->target_period_size, 0);
+		error = setup_target_hw_params(plugin_data, params);
 		if (error)
 		{
-			ERR("Could not get period size value: %s", snd_strerror(error));
+			ERR("Could not setup target hardware parameters for device %s: %s", plugin_data->target_device, snd_strerror(error));
 		}
-	}
-	if (!error)
-	{
-	    error = snd_pcm_hw_params_get_periods(params, &plugin_data->target_periods, 0);
-		if (error)
-		{
-			ERR("Could not get buffer size value: %s", snd_strerror(error));
-		}
-	}
-	if (!error)
-	{
-		error = snd_pcm_hw_params_get_format(params, &plugin_data->format);
-		if (error)
-		{
-			ERR("Could not get format value: %s", snd_strerror(error));
-		}
-	}
-	if (!error)
-	{
-		plugin_data->bytes_per_sample = snd_pcm_format_physical_width(plugin_data->format) >> 3;
 	}
 
 	return error;
@@ -100,16 +81,6 @@ static int callback_prepare(snd_pcm_ioplug_t *io)
 
 	/* resetting hw buffer pointer */
 	plugin_data->pointer = 0;
-
-	/* setting up target device */
-	if (!error)
-	{
-		error = setup_target_device(plugin_data);
-		if (error)
-		{
-			ERR("Could not setup target device=%s, error=%s", plugin_data->target_device, snd_strerror(error));
-		}
-	}
 
 	/* preparing target device and starting playback */
 	if (!error)
@@ -141,50 +112,52 @@ static int callback_sw_params(snd_pcm_ioplug_t *io, snd_pcm_sw_params_t *params)
 {
     DBG("");
 
+    int            error       = 0;
+    plugin_data_t* plugin_data = (plugin_data_t*)io->private_data;
+
+    /* setting up target device software parameters */
+	if (!error)
+	{
+		error = setup_target_sw_params(plugin_data, params);
+		if (error)
+		{
+			ERR("Could not setup target software parameters for device %s: %s", plugin_data->target_device, snd_strerror(error));
+		}
+	}
+
     return 0;
 }
 
 
-static snd_pcm_sframes_t callback_transfer(snd_pcm_ioplug_t *io, const snd_pcm_channel_area_t *areas, snd_pcm_uframes_t offset, snd_pcm_uframes_t total_frames)
+static snd_pcm_sframes_t callback_transfer(snd_pcm_ioplug_t *io, const snd_pcm_channel_area_t *areas, snd_pcm_uframes_t offset, snd_pcm_uframes_t frames)
 {
-	plugin_data_t*    plugin_data = (plugin_data_t*)io->private_data;
-	snd_pcm_uframes_t frames      = plugin_data->target_period_size - plugin_data->target_buffer_current;
-	unsigned char*    pcm_data    = (unsigned char*)areas->addr + (areas->first >> 3) + ((areas->step * offset) >> 3);
+	plugin_data_t*    plugin_data  = (plugin_data_t*)io->private_data;
+	snd_pcm_uframes_t avail_frames = plugin_data->target_period_size - plugin_data->target_buffer_current;
+	unsigned char*    pcm_data     = (unsigned char*)areas->addr + (areas->first >> 3) + ((areas->step * offset) >> 3);
 
 	/* adjusting amount of frames to be processed, which is max(available,provided) */
-	if (total_frames < frames)
+	if (frames > avail_frames)
 	{
-		frames = total_frames;
+		frames = avail_frames;
 	}
 
-	/* the whole buffer will be written so reseting it first */
-	memset(plugin_data->target_buffer, 0, plugin_data->target_period_size * plugin_data->bytes_per_sample * (io->channels + 1));
+	/* target buffer may be different in size, so it needs to be reset before filling in */
+	memset(plugin_data->target_buffer, 0, plugin_data->target_period_size * (snd_pcm_format_physical_width(plugin_data->target_format) >> 3) * (io->channels + 1));
 
 	/* it is ok to process less frames than provided as ALSA will call this callback with the rest of data */
 	for (snd_pcm_uframes_t i = 0; i < frames; i++)
 	{
-		unsigned int target_position = plugin_data->target_buffer_current * plugin_data->bytes_per_sample * (io->channels + 1);
+		copy_frame(plugin_data, pcm_data + (i * (snd_pcm_format_physical_width(plugin_data->format) >> 3) * io->channels));
 
-		for (unsigned int j = 0; j < plugin_data->bytes_per_sample * io->channels; j++)
-		{
-			plugin_data->target_buffer[target_position] = *pcm_data;
-			target_position++;
-			pcm_data++;
-		}
-
-		/* this is required as target device uses source channels + 1 */
-		target_position += plugin_data->bytes_per_sample;
+		/* this is required as target device uses extra channel for signal data */
 		plugin_data->target_buffer_current++;
-
-		/* marking frame as containing data in the last byte of the last channel */
-		plugin_data->target_buffer[target_position - 1] = 1;
 	}
 
 	/* if there is anything to be written to the target device */
-	if (frames > 0)
+	for (snd_pcm_sframes_t result = 1; plugin_data->target_buffer_current > 0 && result > 0;)
 	{
 		/* writing to the target device */
-		snd_pcm_sframes_t result = snd_pcm_writei(plugin_data->target_pcm, plugin_data->target_buffer, frames);
+		result = snd_pcm_writei(plugin_data->target_pcm, plugin_data->target_buffer, plugin_data->target_buffer_current);
 
 		/* no need to restore from an error in case of -EAGAIN */
 		if (result < 0 && result != -EAGAIN)
@@ -192,25 +165,40 @@ static snd_pcm_sframes_t callback_transfer(snd_pcm_ioplug_t *io, const snd_pcm_c
 			result = snd_pcm_prepare(plugin_data->target_pcm);
 			if (result < 0)
 			{
-				DBG("Restore error: %s", snd_strerror(result));
+				ERR("Target device restore error: %s", snd_strerror(result));
 			}
 		}
-		else if (result == -EAGAIN)
+		else if (result > 0)
 		{
-			/* it will make ALSA call transfer callback again with the same data */
-			frames = 0;
-		}
-		else
-		{
-			frames                              = result;
+			/* updating target and ALSA buffers' pointers */
 			plugin_data->target_buffer_current -= result;
 			plugin_data->pointer               += result;
 		}
 	}
-
-	DBG("first=%u offset=%lu total_frames=%lu proc_frames=%ld", areas->first, offset, total_frames, frames);
+	DBG("first=%u offset=%lu frames=%lu avail_frames=%ld", areas->first, offset, frames, avail_frames);
 
 	return frames;
+}
+
+
+static void copy_frame(plugin_data_t* plugin_data, unsigned char* pcm_data)
+{
+	size_t       sample_size        = (snd_pcm_format_physical_width(plugin_data->format) >> 3);
+	size_t       target_sample_size = (snd_pcm_format_physical_width(plugin_data->target_format) >> 3);
+	size_t       target_frame_size  = target_sample_size * (plugin_data->alsa_data.channels + 1);
+	unsigned int target_offset      = plugin_data->target_buffer_current * target_frame_size;
+
+	/* iterating through the channels */
+	for (unsigned int c = 0; c < plugin_data->alsa_data.channels; c++)
+	{
+		for (unsigned int j = 0; j < sample_size; j++)
+		{
+			plugin_data->target_buffer[target_offset + c * target_sample_size + j] = *(pcm_data + c * sample_size + j);
+		}
+	}
+
+	/* marking frame as containing data in the last byte of the last channel */
+	plugin_data->target_buffer[target_offset + target_frame_size - 1] = 1;
 }
 
 
@@ -273,11 +261,10 @@ static int setup_hw_params(snd_pcm_ioplug_t *io)
 }
 
 
-static int setup_target_device(plugin_data_t* plugin_data)
+static int setup_target_hw_params(plugin_data_t* plugin_data, snd_pcm_hw_params_t *params)
 {
 	int                  error     = 0;
 	snd_pcm_hw_params_t* hw_params = NULL;
-	snd_pcm_sw_params_t* sw_params = NULL;
 
     /* looking up for the target device name based on sample rate */
 	plugin_data->target_device = NULL;
@@ -294,7 +281,39 @@ static int setup_target_device(plugin_data_t* plugin_data)
         ERR("Could not find target device for sample rate %u", plugin_data->alsa_data.rate);
     }
 
-    /* allocating buffer required to transfer data to target device */
+    /* collecting details about the PCM stream */
+    if (!error)
+	{
+	    error = snd_pcm_hw_params_get_period_size(params, &plugin_data->target_period_size, 0);
+		if (error)
+		{
+			ERR("Could not get period size value: %s", snd_strerror(error));
+		}
+	}
+	if (!error)
+	{
+	    error = snd_pcm_hw_params_get_periods(params, &plugin_data->target_periods, 0);
+		if (error)
+		{
+			ERR("Could not get buffer size value: %s", snd_strerror(error));
+		}
+	}
+	if (!error)
+	{
+		error = snd_pcm_hw_params_get_format(params, &plugin_data->format);
+		if (error)
+		{
+			ERR("Could not get format value: %s", snd_strerror(error));
+		}
+	}
+
+	/* setting the rest of target stream parameters */
+	if (!error)
+	{
+		plugin_data->target_format = SND_PCM_FORMAT_S32_LE;
+	}
+
+	/* allocating buffer required to transfer data to target device */
     if (!error)
 	{
 	    DBG("Target device=%s", plugin_data->target_device);
@@ -304,7 +323,7 @@ static int setup_target_device(plugin_data_t* plugin_data)
 	    }
 
 	    /* adding extra space for one extra channel */
-		size_t target_size = plugin_data->target_period_size * plugin_data->bytes_per_sample * (plugin_data->alsa_data.channels + 1);
+		size_t target_size = plugin_data->target_period_size * (snd_pcm_format_physical_width(plugin_data->target_format) >> 3) * (plugin_data->alsa_data.channels + 1);
 		plugin_data->target_buffer = (unsigned char*) calloc(1, target_size);
 		if (!plugin_data->target_buffer)
 		{
@@ -340,7 +359,7 @@ static int setup_target_device(plugin_data_t* plugin_data)
     }
 	if (!error)
 	{
-		error = snd_pcm_hw_params_set_format(plugin_data->target_pcm, hw_params, plugin_data->format);
+		error = snd_pcm_hw_params_set_format(plugin_data->target_pcm, hw_params, plugin_data->target_format);
 	}
 	if (!error)
 	{
@@ -371,7 +390,16 @@ static int setup_target_device(plugin_data_t* plugin_data)
 		snd_pcm_hw_params_free(hw_params);
 	}
 
-    /* allocating software parameters object and fill it with default values */
+	return error;
+}
+
+
+static int setup_target_sw_params(plugin_data_t* plugin_data, snd_pcm_sw_params_t *params)
+{
+	int                  error     = 0;
+	snd_pcm_sw_params_t* sw_params = NULL;
+
+	/* allocating software parameters object and fill it with default values */
     if (!error)
 	{
 		error = snd_pcm_sw_params_malloc(&sw_params);

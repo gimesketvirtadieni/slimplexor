@@ -12,7 +12,6 @@
 
 #include <alsa/asoundlib.h>
 #include <alsa/pcm_external.h>
-#include <pthread.h>
 #include <stddef.h>  /* size_t */
 #include <stdint.h>  /* types like u_int16_t, etc. */
 
@@ -37,13 +36,13 @@ typedef struct plugin_data
 	rate_device_map_t*   rate_device_map;
 	snd_pcm_sframes_t    pointer;
 	snd_pcm_format_t     format;
-	int                  bytes_per_sample;
 	char*                device;
+	char*                target_device;
+	snd_pcm_t*           target_pcm;
+	unsigned int         target_channels;
+	unsigned int         target_format;
 	snd_pcm_uframes_t    target_period_size;
 	unsigned int         target_periods;
-	char*                target_device;
-	unsigned int         target_channels;
-	snd_pcm_t*           target_pcm;
 	unsigned char*       target_buffer;
 	snd_pcm_uframes_t    target_buffer_current;
 } plugin_data_t;
@@ -57,9 +56,11 @@ static int               callback_start(snd_pcm_ioplug_t *io);
 static int               callback_stop(snd_pcm_ioplug_t *io);
 static int               callback_sw_params(snd_pcm_ioplug_t *io, snd_pcm_sw_params_t *params);
 static snd_pcm_sframes_t callback_transfer(snd_pcm_ioplug_t *io, const snd_pcm_channel_area_t *areas, snd_pcm_uframes_t offset, snd_pcm_uframes_t size);
+static void              copy_frame(plugin_data_t* plugin_data, unsigned char* pcm_data);
 static void              release_resources(plugin_data_t* plugin_data);
 static int               setup_hw_params(snd_pcm_ioplug_t *io);
-static int               setup_target_device(plugin_data_t* plugin_data);
+static int               setup_target_hw_params(plugin_data_t* plugin_data, snd_pcm_hw_params_t *params);
+static int               setup_target_sw_params(plugin_data_t* plugin_data, snd_pcm_sw_params_t *params);
 
 
 const unsigned int supported_accesses[] =
@@ -71,19 +72,9 @@ const unsigned int supported_accesses[] =
 const unsigned int supported_formats[] =
 {
 	SND_PCM_FORMAT_S8,
-	SND_PCM_FORMAT_U8,
 	SND_PCM_FORMAT_S16_LE,
-	SND_PCM_FORMAT_S16_BE,
-	SND_PCM_FORMAT_U16_LE,
-	SND_PCM_FORMAT_U16_BE,
 	SND_PCM_FORMAT_S24_LE,
-	SND_PCM_FORMAT_S24_BE,
-	SND_PCM_FORMAT_U24_LE,
-	SND_PCM_FORMAT_U24_BE,
 	SND_PCM_FORMAT_S32_LE,
-	SND_PCM_FORMAT_S32_BE,
-	SND_PCM_FORMAT_U32_LE,
-	SND_PCM_FORMAT_U32_BE
 };
 
 
