@@ -54,7 +54,7 @@ static int callback_hw_params(snd_pcm_ioplug_t *io, snd_pcm_hw_params_t *params)
 		error = setup_target_hw_params(plugin_data, params);
 		if (error)
 		{
-			ERR("Could not setup target hardware parameters for device %s: %s", plugin_data->target_device, snd_strerror(error));
+			ERR("Could not setup target hardware parameters: %s", snd_strerror(error));
 		}
 	}
 
@@ -64,11 +64,11 @@ static int callback_hw_params(snd_pcm_ioplug_t *io, snd_pcm_hw_params_t *params)
 
 static snd_pcm_sframes_t callback_pointer(snd_pcm_ioplug_t *io)
 {
-    plugin_data_t* plugin_data = (plugin_data_t*)io->private_data;
+	plugin_data_t* plugin_data = (plugin_data_t*)io->private_data;
 
 	plugin_data->pointer %= io->buffer_size;
 
-    return plugin_data->pointer;
+	return plugin_data->pointer;
 }
 
 
@@ -121,7 +121,7 @@ static int callback_sw_params(snd_pcm_ioplug_t *io, snd_pcm_sw_params_t *params)
 		error = setup_target_sw_params(plugin_data, params);
 		if (error)
 		{
-			ERR("Could not setup target software parameters for device %s: %s", plugin_data->target_device, snd_strerror(error));
+			ERR("Could not setup target software parameters: %s", snd_strerror(error));
 		}
 	}
 
@@ -134,6 +134,8 @@ static snd_pcm_sframes_t callback_transfer(snd_pcm_ioplug_t *io, const snd_pcm_c
 	plugin_data_t*    plugin_data  = (plugin_data_t*)io->private_data;
 	snd_pcm_uframes_t avail_frames = plugin_data->target_period_size - plugin_data->target_buffer_current;
 	unsigned char*    pcm_data     = (unsigned char*)areas->addr + (areas->first >> 3) + ((areas->step * offset) >> 3);
+	size_t            sample_size  = (snd_pcm_format_physical_width(plugin_data->format) >> 3);
+	size_t            frame_size   = sample_size * io->channels;
 
 	/* adjusting amount of frames to be processed, which is max(available,provided) */
 	if (frames > avail_frames)
@@ -141,41 +143,15 @@ static snd_pcm_sframes_t callback_transfer(snd_pcm_ioplug_t *io, const snd_pcm_c
 		frames = avail_frames;
 	}
 
-	/* target buffer may be different in size, so it needs to be reset before filling in */
-	memset(plugin_data->target_buffer, 0, plugin_data->target_period_size * (snd_pcm_format_physical_width(plugin_data->target_format) >> 3) * (io->channels + 1));
-
 	/* it is ok to process less frames than provided as ALSA will call this callback with the rest of data */
 	for (snd_pcm_uframes_t i = 0; i < frames; i++)
 	{
-		copy_frame(plugin_data, pcm_data + (i * (snd_pcm_format_physical_width(plugin_data->format) >> 3) * io->channels));
-
-		/* this is required as target device uses extra channel for signal data */
-		plugin_data->target_buffer_current++;
+		copy_frame(plugin_data, pcm_data + i * frame_size);
 	}
 
-	/* if there is anything to be written to the target device */
-	for (snd_pcm_sframes_t result = 1; plugin_data->target_buffer_current > 0 && result > 0;)
-	{
-		/* writing to the target device */
-		result = snd_pcm_writei(plugin_data->target_pcm, plugin_data->target_buffer, plugin_data->target_buffer_current);
+	snd_pcm_sframes_t written = write_to_target(plugin_data);
 
-		/* no need to restore from an error in case of -EAGAIN */
-		if (result < 0 && result != -EAGAIN)
-		{
-			result = snd_pcm_prepare(plugin_data->target_pcm);
-			if (result < 0)
-			{
-				ERR("Target device restore error: %s", snd_strerror(result));
-			}
-		}
-		else if (result > 0)
-		{
-			/* updating target and ALSA buffers' pointers */
-			plugin_data->target_buffer_current -= result;
-			plugin_data->pointer               += result;
-		}
-	}
-	DBG("first=%u offset=%lu frames=%lu avail_frames=%ld", areas->first, offset, frames, avail_frames);
+	DBG("first=%u offset=%lu frames=%lu written=%ld", areas->first, offset, frames, written);
 
 	return frames;
 }
@@ -184,21 +160,23 @@ static snd_pcm_sframes_t callback_transfer(snd_pcm_ioplug_t *io, const snd_pcm_c
 static void copy_frame(plugin_data_t* plugin_data, unsigned char* pcm_data)
 {
 	size_t       sample_size        = (snd_pcm_format_physical_width(plugin_data->format) >> 3);
+	size_t       frame_size         = sample_size * plugin_data->alsa_data.channels;
 	size_t       target_sample_size = (snd_pcm_format_physical_width(plugin_data->target_format) >> 3);
 	size_t       target_frame_size  = target_sample_size * (plugin_data->alsa_data.channels + 1);
 	unsigned int target_offset      = plugin_data->target_buffer_current * target_frame_size;
 
-	/* iterating through the channels */
-	for (unsigned int c = 0; c < plugin_data->alsa_data.channels; c++)
+	for (unsigned int j = 0; j < frame_size; j++)
 	{
-		for (unsigned int j = 0; j < sample_size; j++)
-		{
-			plugin_data->target_buffer[target_offset + c * target_sample_size + j] = *(pcm_data + c * sample_size + j);
-		}
+		plugin_data->target_buffer[target_offset] = *pcm_data;
+		target_offset++;
+		pcm_data++;
 	}
 
 	/* marking frame as containing data in the last byte of the last channel */
-	plugin_data->target_buffer[target_offset + target_frame_size - 1] = 1;
+	plugin_data->target_buffer[target_offset + target_sample_size - 1] = 1;
+
+	/* increasing pointer of the target buffer */
+	plugin_data->target_buffer_current++;
 }
 
 
@@ -250,11 +228,11 @@ static int setup_hw_params(snd_pcm_ioplug_t *io)
     /* defining buffer size: bufer = period size * number of periods */
     if (!error)
     {
-		error = snd_pcm_ioplug_set_param_minmax(io, SND_PCM_IOPLUG_HW_PERIOD_BYTES, period_size_bytes, period_size_bytes);
+		error = snd_pcm_ioplug_set_param_minmax(io, SND_PCM_IOPLUG_HW_PERIOD_BYTES, PERIOD_SIZE_BYTES, PERIOD_SIZE_BYTES);
     }
 	if (!error)
 	{
-		error = snd_pcm_ioplug_set_param_minmax(io, SND_PCM_IOPLUG_HW_PERIODS, periods, periods);
+		error = snd_pcm_ioplug_set_param_minmax(io, SND_PCM_IOPLUG_HW_PERIODS, PERIODS, PERIODS);
 	}
 
     return error;
@@ -282,7 +260,7 @@ static int setup_target_hw_params(plugin_data_t* plugin_data, snd_pcm_hw_params_
     }
 
     /* collecting details about the PCM stream */
-    if (!error)
+	if (!error)
 	{
 	    error = snd_pcm_hw_params_get_period_size(params, &plugin_data->target_period_size, 0);
 		if (error)
@@ -308,13 +286,10 @@ static int setup_target_hw_params(plugin_data_t* plugin_data, snd_pcm_hw_params_
 	}
 
 	/* setting the rest of target stream parameters */
-	if (!error)
-	{
-		plugin_data->target_format = SND_PCM_FORMAT_S32_LE;
-	}
+	plugin_data->target_format = TARGET_FORMAT;
 
 	/* allocating buffer required to transfer data to target device */
-    if (!error)
+	if (!error)
 	{
 	    DBG("Target device=%s", plugin_data->target_device);
 	    if (plugin_data->target_buffer)
@@ -428,6 +403,53 @@ static int setup_target_sw_params(plugin_data_t* plugin_data, snd_pcm_sw_params_
 	}
 
 	return error;
+}
+
+
+static snd_pcm_sframes_t write_to_target(plugin_data_t* plugin_data)
+{
+	snd_pcm_sframes_t result = 0;
+
+	/* if there is anything to be written to the target device */
+	if (plugin_data->target_buffer_current > 0)
+	{
+		/* writing to the target device */
+		result = snd_pcm_writei(plugin_data->target_pcm, plugin_data->target_buffer, plugin_data->target_buffer_current);
+
+		/* no need to restore from an error in case of -EAGAIN */
+		if (result < 0 && result != -EAGAIN)
+		{
+			result = snd_pcm_prepare(plugin_data->target_pcm);
+			if (result < 0)
+			{
+				ERR("Target device restore error: %s", snd_strerror(result));
+			}
+		}
+		else if (result == -EAGAIN)
+		{
+			/* it will make ALSA call transfer callback again with the same data */
+			result = 0;
+		}
+		else if (result > 0)
+		{
+			/* if not all data was written then moving reminder of the target buffer to the beginning */
+			if (result < plugin_data->target_buffer_current)
+			{
+				size_t            target_sample_size = (snd_pcm_format_physical_width(plugin_data->target_format) >> 3);
+				size_t            target_frame_size  = target_sample_size * (plugin_data->alsa_data.channels + 1);
+				size_t            offset             = result * target_frame_size;
+				snd_pcm_uframes_t frames             = plugin_data->target_buffer_current - result;
+
+				memcpy(plugin_data->target_buffer, plugin_data->target_buffer + offset, frames * target_frame_size);
+			}
+
+			/* updating target and ALSA buffers' pointers */
+			plugin_data->target_buffer_current -= result;
+			plugin_data->pointer               += result;
+		}
+	}
+
+	return result;
 }
 
 

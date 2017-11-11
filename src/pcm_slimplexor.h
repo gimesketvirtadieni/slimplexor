@@ -16,10 +16,14 @@
 #include <stdint.h>  /* types like u_int16_t, etc. */
 
 
-#define DBG(fmt, arg...) /* TODO: parametrize */ printf("DEBUG: %s: "   fmt "\n" , __FUNCTION__ , ## arg)
-#define ERR(fmt, arg...) printf("ERROR: %s: "   fmt "\n" , __FUNCTION__ , ## arg)
-#define WRN(fmt, arg...) printf("WARNING: %s: " fmt "\n" , __FUNCTION__ , ## arg)
-#define ARRAY_SIZE(a) (sizeof(a)/sizeof((a)[0]))
+#define DBG(fmt, arg...)  /* TODO: parametrize */ printf("DEBUG: %s: "   fmt "\n" , __FUNCTION__ , ## arg)
+#define ERR(fmt, arg...)  printf("ERROR: %s: "   fmt "\n" , __FUNCTION__ , ## arg)
+#define WRN(fmt, arg...)  printf("WARNING: %s: " fmt "\n" , __FUNCTION__ , ## arg)
+#define ARRAY_SIZE(a)     (sizeof(a)/sizeof((a)[0]))
+#define TARGET_FORMAT     SND_PCM_FORMAT_S16_LE
+/* TODO: use latency in ms instead derived from conf */
+#define PERIOD_SIZE_BYTES (1024 * 4)
+#define PERIODS           2
 
 
 typedef struct rate_device_map
@@ -36,7 +40,6 @@ typedef struct plugin_data
 	rate_device_map_t*   rate_device_map;
 	snd_pcm_sframes_t    pointer;
 	snd_pcm_format_t     format;
-	char*                device;
 	char*                target_device;
 	snd_pcm_t*           target_pcm;
 	unsigned int         target_channels;
@@ -61,6 +64,7 @@ static void              release_resources(plugin_data_t* plugin_data);
 static int               setup_hw_params(snd_pcm_ioplug_t *io);
 static int               setup_target_hw_params(plugin_data_t* plugin_data, snd_pcm_hw_params_t *params);
 static int               setup_target_sw_params(plugin_data_t* plugin_data, snd_pcm_sw_params_t *params);
+static snd_pcm_sframes_t write_to_target(plugin_data_t* plugin_data);
 
 
 const unsigned int supported_accesses[] =
@@ -101,8 +105,3 @@ const snd_pcm_ioplug_callback_t callbacks = {
 	.prepare   = callback_prepare,
 	.transfer  = callback_transfer,
 };
-
-
-/* TODO: use latency in ms instead derived from conf */
-static size_t       period_size_bytes = 1024 * 16;
-static unsigned int periods           = 2;
