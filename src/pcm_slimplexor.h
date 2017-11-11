@@ -20,9 +20,9 @@
 #define ERR(fmt, arg...)  printf("ERROR: %s: "   fmt "\n" , __FUNCTION__ , ## arg)
 #define WRN(fmt, arg...)  printf("WARNING: %s: " fmt "\n" , __FUNCTION__ , ## arg)
 #define ARRAY_SIZE(a)     (sizeof(a)/sizeof((a)[0]))
-#define TARGET_FORMAT     SND_PCM_FORMAT_S16_LE
+#define TARGET_FORMAT     SND_PCM_FORMAT_S32_LE
 /* TODO: use latency in ms instead derived from conf */
-#define PERIOD_SIZE_BYTES (1024 * 4)
+#define PERIOD_SIZE_BYTES (1024 * 8)
 #define PERIODS           2
 
 
@@ -47,6 +47,7 @@ typedef struct plugin_data
 	snd_pcm_uframes_t    target_period_size;
 	unsigned int         target_periods;
 	unsigned char*       target_buffer;
+	snd_pcm_uframes_t    target_buffer_size;
 	snd_pcm_uframes_t    target_buffer_current;
 } plugin_data_t;
 

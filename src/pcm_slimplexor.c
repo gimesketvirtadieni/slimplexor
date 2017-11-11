@@ -68,7 +68,7 @@ static snd_pcm_sframes_t callback_pointer(snd_pcm_ioplug_t *io)
 
 	plugin_data->pointer %= io->buffer_size;
 
-	return plugin_data->pointer;
+    return plugin_data->pointer;
 }
 
 
@@ -129,18 +129,18 @@ static int callback_sw_params(snd_pcm_ioplug_t *io, snd_pcm_sw_params_t *params)
 }
 
 
-static snd_pcm_sframes_t callback_transfer(snd_pcm_ioplug_t *io, const snd_pcm_channel_area_t *areas, snd_pcm_uframes_t offset, snd_pcm_uframes_t frames)
+static snd_pcm_sframes_t callback_transfer(snd_pcm_ioplug_t *io, const snd_pcm_channel_area_t *areas, snd_pcm_uframes_t offset, snd_pcm_uframes_t frames_avail)
 {
-	plugin_data_t*    plugin_data  = (plugin_data_t*)io->private_data;
-	snd_pcm_uframes_t avail_frames = plugin_data->target_period_size - plugin_data->target_buffer_current;
-	unsigned char*    pcm_data     = (unsigned char*)areas->addr + (areas->first >> 3) + ((areas->step * offset) >> 3);
-	size_t            sample_size  = (snd_pcm_format_physical_width(plugin_data->format) >> 3);
-	size_t            frame_size   = sample_size * io->channels;
+	plugin_data_t*    plugin_data = (plugin_data_t*)io->private_data;
+	snd_pcm_uframes_t frames      = plugin_data->target_buffer_size - plugin_data->target_buffer_current;
+	unsigned char*    pcm_data    = (unsigned char*)areas->addr + (areas->first >> 3) + ((areas->step * offset) >> 3);
+	size_t            sample_size = (snd_pcm_format_physical_width(plugin_data->format) >> 3);
+	size_t            frame_size  = sample_size * io->channels;
 
 	/* adjusting amount of frames to be processed, which is max(available,provided) */
-	if (frames > avail_frames)
+	if (frames > frames_avail)
 	{
-		frames = avail_frames;
+		frames = frames_avail;
 	}
 
 	/* it is ok to process less frames than provided as ALSA will call this callback with the rest of data */
@@ -151,7 +151,7 @@ static snd_pcm_sframes_t callback_transfer(snd_pcm_ioplug_t *io, const snd_pcm_c
 
 	snd_pcm_sframes_t written = write_to_target(plugin_data);
 
-	DBG("first=%u offset=%lu frames=%lu written=%ld", areas->first, offset, frames, written);
+	DBG("first=%u offset=%lu avail=%lu frames=%lu written=%ld", areas->first, offset, frames_avail, frames, written);
 
 	return frames;
 }
@@ -263,10 +263,11 @@ static int setup_target_hw_params(plugin_data_t* plugin_data, snd_pcm_hw_params_
 	if (!error)
 	{
 	    error = snd_pcm_hw_params_get_period_size(params, &plugin_data->target_period_size, 0);
-		if (error)
+	    if (error)
 		{
 			ERR("Could not get period size value: %s", snd_strerror(error));
 		}
+	    DBG("plugin_data->target_period_size=%ld", plugin_data->target_period_size);
 	}
 	if (!error)
 	{
@@ -285,6 +286,9 @@ static int setup_target_hw_params(plugin_data_t* plugin_data, snd_pcm_hw_params_
 		}
 	}
 
+	/* target buffer must not be equal to the source buffer size; otherwise pointer callback will always return 0 */
+	plugin_data->target_buffer_size = plugin_data->target_period_size;
+
 	/* setting the rest of target stream parameters */
 	plugin_data->target_format = TARGET_FORMAT;
 
@@ -298,7 +302,7 @@ static int setup_target_hw_params(plugin_data_t* plugin_data, snd_pcm_hw_params_
 	    }
 
 	    /* adding extra space for one extra channel */
-		size_t target_size = plugin_data->target_period_size * (snd_pcm_format_physical_width(plugin_data->target_format) >> 3) * (plugin_data->alsa_data.channels + 1);
+		size_t target_size = plugin_data->target_buffer_size * (snd_pcm_format_physical_width(plugin_data->target_format) >> 3) * (plugin_data->alsa_data.channels + 1);
 		plugin_data->target_buffer = (unsigned char*) calloc(1, target_size);
 		if (!plugin_data->target_buffer)
 		{
@@ -344,8 +348,6 @@ static int setup_target_hw_params(plugin_data_t* plugin_data, snd_pcm_hw_params_
 	{
 		error = snd_pcm_hw_params_set_rate(plugin_data->target_pcm, hw_params, plugin_data->alsa_data.rate, 0);
 	}
-
-	/* defining buffer size: bufer = period size * number of periods */
     if (!error)
     {
 		error = snd_pcm_hw_params_set_period_size(plugin_data->target_pcm, hw_params, plugin_data->target_period_size, 0);
@@ -385,7 +387,7 @@ static int setup_target_sw_params(plugin_data_t* plugin_data, snd_pcm_sw_params_
 	}
     if (!error)
 	{
-        error = snd_pcm_sw_params_set_start_threshold(plugin_data->target_pcm, sw_params, plugin_data->target_period_size * plugin_data->target_periods);
+        error = snd_pcm_sw_params_set_start_threshold(plugin_data->target_pcm, sw_params, plugin_data->target_buffer_size);
 	}
     if (!error)
 	{
