@@ -159,21 +159,34 @@ static snd_pcm_sframes_t callback_transfer(snd_pcm_ioplug_t *io, const snd_pcm_c
 
 static void copy_frame(plugin_data_t* plugin_data, unsigned char* pcm_data)
 {
-	size_t       sample_size        = (snd_pcm_format_physical_width(plugin_data->format) >> 3);
-	size_t       frame_size         = sample_size * plugin_data->alsa_data.channels;
-	size_t       target_sample_size = (snd_pcm_format_physical_width(plugin_data->target_format) >> 3);
-	size_t       target_frame_size  = target_sample_size * (plugin_data->alsa_data.channels + 1);
-	unsigned int target_offset      = plugin_data->target_buffer_current * target_frame_size;
+	size_t sample_size        = (snd_pcm_format_physical_width(plugin_data->format) >> 3);
+	size_t target_sample_size = (snd_pcm_format_physical_width(plugin_data->target_format) >> 3);
+	size_t target_frame_size  = target_sample_size * (plugin_data->alsa_data.channels + 1);
+	size_t target_offset      = plugin_data->target_buffer_current * target_frame_size;
 
-	for (unsigned int j = 0; j < frame_size; j++)
+	/* TODO: buffer should be reset in transfer callback */
+	for (unsigned int i = 0; i < target_frame_size; i++)
 	{
-		plugin_data->target_buffer[target_offset] = *pcm_data;
-		target_offset++;
-		pcm_data++;
+		target_data[i] = 0;
+	}
+
+	unsigned char* data            = pcm_data;
+	unsigned char* target_data     = plugin_data->target_buffer + target_offset;
+	size_t         size_difference = target_sample_size - sample_size;
+	for (unsigned int i = 0; i < plugin_data->alsa_data.channels + 1; i++)
+	{
+		/* TODO: optimize */
+		data        += i * sample_size;
+		target_data += i * target_sample_size;
+		for (unsigned int j = 0; j < sample_size; j++)
+		{
+			/* TODO: size_difference should be moved out this loop */
+			target_data[j + size_difference] = data[j];
+		}
 	}
 
 	/* marking frame as containing data in the last byte of the last channel */
-	plugin_data->target_buffer[target_offset + target_sample_size - 1] = 1;
+	plugin_data->target_buffer[target_offset + target_frame_size - 1] = 1;
 
 	/* increasing pointer of the target buffer */
 	plugin_data->target_buffer_current++;
