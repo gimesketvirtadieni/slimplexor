@@ -22,6 +22,17 @@ static int callback_close(snd_pcm_ioplug_t *io)
 
 	if (plugin_data->target_pcm)
 	{
+		/* reseting target buffer */
+		size_t target_sample_size = (snd_pcm_format_physical_width(plugin_data->target_format) >> 3);
+		size_t target_frame_size  = target_sample_size * (plugin_data->alsa_data.channels + 1);
+		memset(plugin_data->target_buffer, 0, plugin_data->target_buffer_size * target_frame_size);
+
+		/* it will make sure there is no junk left in the ALSA buffer left; hopefully */
+		for (int i = 0; i < PERIODS; i++)
+		{
+			snd_pcm_writei(plugin_data->target_pcm, plugin_data->target_buffer, plugin_data->target_buffer_size);
+		}
+
 		error = snd_pcm_drain(plugin_data->target_pcm);
 		if (error < 0)
 		{
@@ -134,21 +145,18 @@ static snd_pcm_sframes_t callback_transfer(snd_pcm_ioplug_t *io, const snd_pcm_c
 	plugin_data_t*    plugin_data = (plugin_data_t*)io->private_data;
 	snd_pcm_uframes_t frames      = plugin_data->target_buffer_size - plugin_data->target_buffer_current;
 	unsigned char*    pcm_data    = (unsigned char*)areas->addr + (areas->first >> 3) + ((areas->step * offset) >> 3);
-	size_t            sample_size = (snd_pcm_format_physical_width(plugin_data->format) >> 3);
-	size_t            frame_size  = sample_size * io->channels;
 
 	/* adjusting amount of frames to be processed, which is max(available,provided) */
 	if (frames > frames_avail)
 	{
+		/* it is ok to process less frames than provided as ALSA will call this callback with the rest of data */
 		frames = frames_avail;
 	}
 
-	/* it is ok to process less frames than provided as ALSA will call this callback with the rest of data */
-	for (snd_pcm_uframes_t i = 0; i < frames; i++)
-	{
-		copy_frame(plugin_data, pcm_data + i * frame_size);
-	}
+	/* copying frames from the source buffer to the target buffer */
+	copy_frames(plugin_data, pcm_data, frames);
 
+	/* writting to the target device */
 	snd_pcm_sframes_t written = write_to_target(plugin_data);
 
 	DBG("first=%u offset=%lu avail=%lu frames=%lu written=%ld", areas->first, offset, frames_avail, frames, written);
@@ -157,39 +165,44 @@ static snd_pcm_sframes_t callback_transfer(snd_pcm_ioplug_t *io, const snd_pcm_c
 }
 
 
-static void copy_frame(plugin_data_t* plugin_data, unsigned char* pcm_data)
+static void copy_frames(plugin_data_t* plugin_data, unsigned char* pcm_data, snd_pcm_uframes_t frames)
 {
-	size_t sample_size        = (snd_pcm_format_physical_width(plugin_data->format) >> 3);
-	size_t target_sample_size = (snd_pcm_format_physical_width(plugin_data->target_format) >> 3);
-	size_t target_frame_size  = target_sample_size * (plugin_data->alsa_data.channels + 1);
-	size_t target_offset      = plugin_data->target_buffer_current * target_frame_size;
+	size_t         sample_size        = (snd_pcm_format_physical_width(plugin_data->format) >> 3);
+	size_t         target_sample_size = (snd_pcm_format_physical_width(plugin_data->target_format) >> 3);
+	size_t         target_frame_size  = target_sample_size * (plugin_data->alsa_data.channels + 1);
+	size_t         size_difference    = target_sample_size - sample_size;
+	unsigned char* target_data        = plugin_data->target_buffer + plugin_data->target_buffer_current * target_frame_size;
 
-	/* TODO: buffer should be reset in transfer callback */
-	for (unsigned int i = 0; i < target_frame_size; i++)
-	{
-		target_data[i] = 0;
-	}
+	/* resetting target buffer to make sure it is not filled with junk */
+	memset(target_data, 0, frames * target_frame_size);
 
-	unsigned char* data            = pcm_data;
-	unsigned char* target_data     = plugin_data->target_buffer + target_offset;
-	size_t         size_difference = target_sample_size - sample_size;
-	for (unsigned int i = 0; i < plugin_data->alsa_data.channels + 1; i++)
+	/* going through frame-by-frame */
+	for (unsigned int f = 0; f < frames; f++)
 	{
-		/* TODO: optimize */
-		data        += i * sample_size;
-		target_data += i * target_sample_size;
-		for (unsigned int j = 0; j < sample_size; j++)
+		/* going through channel-by-channel */
+		/* TODO: support is required for source channel != (target channel + 1) */
+		for (unsigned int c = 0; c < plugin_data->alsa_data.channels; c++)
 		{
-			/* TODO: size_difference should be moved out this loop */
-			target_data[j + size_difference] = data[j];
-		}
-	}
+			/* going through sample-by-sample */
+			for (unsigned int s = 0; s < sample_size; s++)
+			{
+				target_data[s + size_difference] = pcm_data[s];
+			}
 
-	/* marking frame as containing data in the last byte of the last channel */
-	plugin_data->target_buffer[target_offset + target_frame_size - 1] = 1;
+			/* skipping to the next sample representing the next channel */
+			pcm_data    += sample_size;
+			target_data += target_sample_size;
+		}
+
+		/* target frame contains one extra channel for control data */
+		target_data += target_sample_size;
+
+		/* marking frame as containing data in the last byte of the last channel */
+		*(target_data - 1) = 1;
+	}
 
 	/* increasing pointer of the target buffer */
-	plugin_data->target_buffer_current++;
+	plugin_data->target_buffer_current += frames;
 }
 
 

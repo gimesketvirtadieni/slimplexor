@@ -60,7 +60,7 @@ static int               callback_start(snd_pcm_ioplug_t *io);
 static int               callback_stop(snd_pcm_ioplug_t *io);
 static int               callback_sw_params(snd_pcm_ioplug_t *io, snd_pcm_sw_params_t *params);
 static snd_pcm_sframes_t callback_transfer(snd_pcm_ioplug_t *io, const snd_pcm_channel_area_t *areas, snd_pcm_uframes_t offset, snd_pcm_uframes_t size);
-static void              copy_frame(plugin_data_t* plugin_data, unsigned char* pcm_data);
+static void              copy_frames(plugin_data_t* plugin_data, unsigned char* pcm_data, snd_pcm_uframes_t frames);
 static void              release_resources(plugin_data_t* plugin_data);
 static int               setup_hw_params(snd_pcm_ioplug_t *io);
 static int               setup_target_hw_params(plugin_data_t* plugin_data, snd_pcm_hw_params_t *params);
