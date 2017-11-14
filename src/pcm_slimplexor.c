@@ -157,9 +157,13 @@ static snd_pcm_sframes_t callback_transfer(snd_pcm_ioplug_t *io, const snd_pcm_c
 	copy_frames(plugin_data, pcm_data, frames);
 
 	/* writting to the target device */
-	snd_pcm_sframes_t written = write_to_target(plugin_data);
+	snd_pcm_sframes_t result = write_to_target(plugin_data);
+	if (result < 0)
+	{
+		ERR("Error while writting to target device: %s", snd_strerror(result));
+	}
 
-	DBG("first=%u offset=%lu avail=%lu frames=%lu written=%ld", areas->first, offset, frames_avail, frames, written);
+	DBG("first=%u offset=%lu avail=%lu frames=%lu result=%ld", areas->first, offset, frames_avail, frames, result);
 
 	return frames;
 }

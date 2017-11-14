@@ -13,10 +13,10 @@
 #include <alsa/asoundlib.h>
 #include <alsa/pcm_external.h>
 #include <stddef.h>  /* size_t */
-#include <stdint.h>  /* types like u_int16_t, etc. */
 
 
-#define DBG(fmt, arg...)  /* TODO: parametrize */ printf("DEBUG: %s: "   fmt "\n" , __FUNCTION__ , ## arg)
+/* TODO: logging level from conf */
+#define DBG(fmt, arg...)  /* TODO: parametrize printf("DEBUG: %s: "   fmt "\n" , __FUNCTION__ , ## arg) */
 #define ERR(fmt, arg...)  printf("ERROR: %s: "   fmt "\n" , __FUNCTION__ , ## arg)
 #define WRN(fmt, arg...)  printf("WARNING: %s: " fmt "\n" , __FUNCTION__ , ## arg)
 #define ARRAY_SIZE(a)     (sizeof(a)/sizeof((a)[0]))
@@ -35,20 +35,20 @@ typedef struct rate_device_map
 
 typedef struct plugin_data
 {
-	snd_pcm_ioplug_t     alsa_data;
-	unsigned int         rate_device_map_size;
-	rate_device_map_t*   rate_device_map;
-	snd_pcm_sframes_t    pointer;
-	snd_pcm_format_t     format;
-	char*                target_device;
-	snd_pcm_t*           target_pcm;
-	unsigned int         target_channels;
-	unsigned int         target_format;
-	snd_pcm_uframes_t    target_period_size;
-	unsigned int         target_periods;
-	unsigned char*       target_buffer;
-	snd_pcm_uframes_t    target_buffer_size;
-	snd_pcm_uframes_t    target_buffer_current;
+	snd_pcm_ioplug_t   alsa_data;
+	unsigned int       rate_device_map_size;
+	rate_device_map_t* rate_device_map;
+	snd_pcm_sframes_t  pointer;
+	snd_pcm_format_t   format;
+	char*              target_device;
+	snd_pcm_t*         target_pcm;
+	unsigned int       target_channels;
+	unsigned int       target_format;
+	snd_pcm_uframes_t  target_period_size;
+	unsigned int       target_periods;
+	unsigned char*     target_buffer;
+	snd_pcm_uframes_t  target_buffer_size;
+	snd_pcm_uframes_t  target_buffer_current;
 } plugin_data_t;
 
 
