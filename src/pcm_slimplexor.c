@@ -528,7 +528,7 @@ SND_PCM_PLUGIN_DEFINE_FUNC(slimplexor)
 		plugin_data->alsa_data.private_data = plugin_data;
 
 	    /* TODO: should come from config */
-		plugin_data->rate_device_map_size   = 2;
+		plugin_data->rate_device_map_size   = 13;
 
     	/* allocating memory for rate->device data structure */
     	plugin_data->rate_device_map = calloc(plugin_data->rate_device_map_size, sizeof(rate_device_map_t));
