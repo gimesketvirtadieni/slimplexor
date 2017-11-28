@@ -28,7 +28,7 @@ static int callback_close(snd_pcm_ioplug_t *io)
 		memset(plugin_data->target_buffer, 0, plugin_data->target_buffer_size * target_frame_size);
 
 		/* it will make sure there is no junk left in the ALSA buffer left; hopefully */
-		for (int i = 0; i < PERIODS; i++)
+		for (int i = 0; i < PERIODS * 2; i++)
 		{
 			snd_pcm_writei(plugin_data->target_pcm, plugin_data->target_buffer, plugin_data->target_buffer_size);
 		}
