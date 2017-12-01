@@ -442,8 +442,6 @@ static void write_stream_marker(plugin_data_t* plugin_data, unsigned char marker
 	/* writting whatever is left in the target buffer */
 	while(plugin_data->target_buffer_current > 0 && result >= 0)
 	{
-		ERR("HEREEE");
-
 		result = write_to_target(plugin_data);
 		if (result < 0)
 		{
