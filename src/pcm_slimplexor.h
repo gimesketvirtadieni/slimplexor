@@ -24,6 +24,10 @@
 /* TODO: use latency in ms instead derived from conf */
 #define PERIOD_SIZE_BYTES (1024 * 8)
 #define PERIODS           2
+/* TODO: use enum */
+#define BEGINNING_OF_STREAM_MARKER 1
+#define END_OF_STREAM_MARKER       2
+#define DATA_MARKER                3
 
 
 typedef struct rate_device_map
@@ -65,6 +69,7 @@ static void              release_resources(plugin_data_t* plugin_data);
 static int               setup_hw_params(snd_pcm_ioplug_t *io);
 static int               setup_target_hw_params(plugin_data_t* plugin_data, snd_pcm_hw_params_t *params);
 static int               setup_target_sw_params(plugin_data_t* plugin_data, snd_pcm_sw_params_t *params);
+static void              write_stream_marker(plugin_data_t* plugin_data, unsigned char marker);
 static snd_pcm_sframes_t write_to_target(plugin_data_t* plugin_data);
 
 

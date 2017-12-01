@@ -22,26 +22,17 @@ static int callback_close(snd_pcm_ioplug_t *io)
 
 	if (plugin_data->target_pcm)
 	{
-		/* reseting target buffer */
-		size_t target_sample_size = (snd_pcm_format_physical_width(plugin_data->target_format) >> 3);
-		size_t target_frame_size  = target_sample_size * (plugin_data->alsa_data.channels + 1);
-		memset(plugin_data->target_buffer, 0, plugin_data->target_buffer_size * target_frame_size);
-
-		/* it will make sure there is no junk left in the ALSA buffer left; hopefully */
-		for (int i = 0; i < PERIODS * 2; i++)
-		{
-			snd_pcm_writei(plugin_data->target_pcm, plugin_data->target_buffer, plugin_data->target_buffer_size);
-		}
+		write_stream_marker(plugin_data, END_OF_STREAM_MARKER);
 
 		error = snd_pcm_drain(plugin_data->target_pcm);
 		if (error < 0)
 		{
-			DBG("Error while draining target device: %s", snd_strerror(error));
+			ERR("Error while draining target device: %s", snd_strerror(error));
 		}
 		error = snd_pcm_close(plugin_data->target_pcm);
 		if (error < 0)
 		{
-			DBG("Error while closing target device: %s", snd_strerror(error));
+			ERR("Error while closing target device: %s", snd_strerror(error));
 		}
 	}
 
@@ -98,6 +89,9 @@ static int callback_prepare(snd_pcm_ioplug_t *io)
 	{
 		error = snd_pcm_prepare(plugin_data->target_pcm);
 	}
+
+	/* marking the biginning of PCM stream */
+	write_stream_marker(plugin_data, BEGINNING_OF_STREAM_MARKER);
 
 	return error;
 }
@@ -202,7 +196,7 @@ static void copy_frames(plugin_data_t* plugin_data, unsigned char* pcm_data, snd
 		target_data += target_sample_size;
 
 		/* marking frame as containing data in the last byte of the last channel */
-		*(target_data - 1) = 1;
+		*(target_data - 1) = DATA_MARKER;
 	}
 
 	/* increasing pointer of the target buffer */
@@ -317,7 +311,8 @@ static int setup_target_hw_params(plugin_data_t* plugin_data, snd_pcm_hw_params_
 	}
 
 	/* target buffer must not be equal to the source buffer size; otherwise pointer callback will always return 0 */
-	plugin_data->target_buffer_size = plugin_data->target_period_size;
+	plugin_data->target_buffer_size    = plugin_data->target_period_size;
+	plugin_data->target_buffer_current = 0;
 
 	/* setting the rest of target stream parameters */
 	plugin_data->target_format = TARGET_FORMAT;
@@ -333,6 +328,8 @@ static int setup_target_hw_params(plugin_data_t* plugin_data, snd_pcm_hw_params_
 
 	    /* adding extra space for one extra channel */
 		size_t target_size = plugin_data->target_buffer_size * (snd_pcm_format_physical_width(plugin_data->target_format) >> 3) * (plugin_data->alsa_data.channels + 1);
+
+		/* calloc sets content to zero */
 		plugin_data->target_buffer = (unsigned char*) calloc(1, target_size);
 		if (!plugin_data->target_buffer)
 		{
@@ -435,6 +432,45 @@ static int setup_target_sw_params(plugin_data_t* plugin_data, snd_pcm_sw_params_
 	}
 
 	return error;
+}
+
+
+static void write_stream_marker(plugin_data_t* plugin_data, unsigned char marker)
+{
+    snd_pcm_sframes_t result = 0;
+
+	/* writting whatever is left in the target buffer */
+	while(plugin_data->target_buffer_current > 0 && result >= 0)
+	{
+		ERR("HEREEE");
+
+		result = write_to_target(plugin_data);
+		if (result < 0)
+		{
+			ERR("Error while writting to target device: %s", snd_strerror(result));
+		}
+	}
+
+	/* reseting target buffer */
+	size_t target_sample_size = (snd_pcm_format_physical_width(plugin_data->target_format) >> 3);
+	size_t target_frame_size  = target_sample_size * (plugin_data->alsa_data.channels + 1);
+	memset(plugin_data->target_buffer, 0, plugin_data->target_buffer_size * target_frame_size);
+
+	/* marking stream as closed; useful to detect ALSA junk at the end */
+	for (snd_pcm_uframes_t i = 0; i < plugin_data->target_buffer_size; i++)
+	{
+		plugin_data->target_buffer[(i + 1) * target_frame_size - 1] = marker;
+	}
+
+	/* making sure a single period is written */
+	for(plugin_data->target_buffer_current = plugin_data->target_buffer_size; plugin_data->target_buffer_current > 0 && result >= 0;)
+	{
+		result = write_to_target(plugin_data);
+		if (result < 0)
+		{
+			ERR("Error while writting to target device: %s", snd_strerror(result));
+		}
+	}
 }
 
 
