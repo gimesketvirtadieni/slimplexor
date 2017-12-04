@@ -16,15 +16,15 @@
 
 
 /* TODO: logging level from conf */
-#define DBG(fmt, arg...)  /* TODO: parametrize  printf("DEBUG: %s: "   fmt "\n" , __FUNCTION__ , ## arg) */
-#define ERR(fmt, arg...)  printf("ERROR: %s: "   fmt "\n" , __FUNCTION__ , ## arg)
-#define WRN(fmt, arg...)  printf("WARNING: %s: " fmt "\n" , __FUNCTION__ , ## arg)
-#define ARRAY_SIZE(a)     (sizeof(a)/sizeof((a)[0]))
-#define TARGET_FORMAT     SND_PCM_FORMAT_S32_LE
+#define DBG(fmt, arg...)           /* TODO: parametrize printf("DEBUG: %s: "   fmt "\n", __FUNCTION__ , ## arg) */
+#define INF(fmt, arg...)           printf("INFO: %s: "    fmt "\n", __FUNCTION__ , ## arg)
+#define ERR(fmt, arg...)           printf("ERROR: %s: "   fmt "\n", __FUNCTION__ , ## arg)
+#define WRN(fmt, arg...)           printf("WARNING: %s: " fmt "\n", __FUNCTION__ , ## arg)
+#define ARRAY_SIZE(a)              (sizeof(a)/sizeof((a)[0]))
+#define TARGET_FORMAT              SND_PCM_FORMAT_S32_LE
 /* TODO: use latency in ms instead derived from conf */
-#define PERIOD_SIZE_BYTES (1024 * 8)
-#define PERIODS           2
-/* TODO: use enum */
+#define PERIOD_SIZE_BYTES          16384
+#define PERIODS                    8
 #define BEGINNING_OF_STREAM_MARKER 1
 #define END_OF_STREAM_MARKER       2
 #define DATA_MARKER                3
