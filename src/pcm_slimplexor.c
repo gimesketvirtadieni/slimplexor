@@ -59,7 +59,9 @@ static snd_pcm_sframes_t callback_pointer(snd_pcm_ioplug_t *io)
 
 	plugin_data->pointer %= io->buffer_size;
 
-    return plugin_data->pointer;
+	DBG("pointer=%ld", plugin_data->pointer);
+
+	return plugin_data->pointer;
 }
 
 
