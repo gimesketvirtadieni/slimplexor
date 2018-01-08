@@ -42,6 +42,14 @@ aplay: main:788: audio open error: No such device or address
 So obviously in my case the required directory where SlimPlexor's shared library should be copied to is '/usr/lib/x86_64-linux-gnu/alsa-lib'
 
 
-# Validating SlimPlexor
+## Validating SlimPlexor
 
-To be described...
+If SlimPlexor was configured properly, then playback output to the terminal should look like this:
+
+```
+andrej@sandbox:~$ aplay sample.wav 
+Playing WAVE 'sample.wav' : Signed 32 bit Little Endian, Rate 44100 Hz, Stereo
+INFO: set_dst_hw_params: destination device=hw:1,0,7
+INFO: set_dst_hw_params: destination period size=2048
+INFO: set_dst_hw_params: destination periods=8
+```
