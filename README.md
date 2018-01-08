@@ -5,17 +5,17 @@ Basically SlimPlexor does two things:
   * It adds an additional channel to the PCM stream with 'meta' data (start / stop markers, etc.)
   * It directs PCM stream to a predefined-by-rate ALSA loopback device. This is required as SlimStrimer reads PCM data from the same predefined-by-rate loopback devices.
 
-# Prerequisites
+## Prerequisites
 
 To be described...
 
 
-# Configuring ALSA
+## Configuring ALSA
 
 To be described...
 
 
-# Compiling SlimPlexor
+## Compiling SlimPlexor
 
 Building SlimPlexor is as easy as that:
 
@@ -27,7 +27,7 @@ make
 ```
 
 
-# Installing SlimPlexor
+## Installing SlimPlexor
 
 Installing SlimPlexor is just copying shared library (libasound_module_pcm_slimplexor.so) to the ALSA plugins directory.
 One way to find out the required directory is to try playing sound with this library installed.
