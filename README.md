@@ -21,17 +21,17 @@ sudo apt-get install build-essential libasound2-dev
 
 Configuring ALSA is the most tricky part of installation steps as it requires a bit dipper knowledge of ALSA setup.  
 IMPORTANT NOTE: ALSA setup is Linux distro specific, so you might need to check ALSA documentation if it does not work for you.  
+
 1. The first thing to do is to make sure ALSA loopback module is loaded:
-  
+
 ```
 andrej@sandbox:~$ sudo lsmod |grep snd_aloop
 snd_aloop              24576  0
 snd_pcm               102400  4 snd_usb_audio,snd_ac97_codec,snd_ens1371,snd_aloop
 snd                    77824  11 snd_hwdep,snd_seq,snd_usb_audio,snd_ac97_codec,snd_timer,snd_rawmidi,snd_usbmidi_lib,snd_ens1371,snd_seq_device,snd_aloop,snd_pcm
 ```
-  
-  
-   If this command does not produce result as above then it means loopback module is not loaded.
+
+If this command does not produce result as above then it means loopback module is not loaded.
 One way to correct that (and make sure ALSA configuration does not change after reboot):
 
 ```
@@ -39,10 +39,9 @@ andrej@sandbox:~$ echo "snd-aloop" | sudo tee /etc/modules-load.d/alsa-loopback.
 snd-aloop
 andrej@sandbox:~$ sudo reboot
 ```
-  
-  
-   After a reboot ALSA loopback module should be loaded (this can be validated as described above).  
-  
+ 
+After a reboot ALSA loopback module should be loaded (this can be validated as described above).  
+
 2. The next step is to define 2 ALSA loopback devices (one device is not enough due to limit of max subdevices per one card):
 
 
