@@ -44,6 +44,64 @@ After a reboot ALSA loopback module should be loaded (this can be validated as d
 
 2. The next step is to define 2 ALSA loopback devices (one device is not enough due to limit of max subdevices per one card):
 
+One way to define required loopback devices is:
+
+```
+andrej@sandbox:~$ echo "options snd-aloop enable=1,1 index=1,2 pcm_substreams=8,8 id=Loopback1,Loopback2" | sudo tee /etc/modprobe.d/alsa-loopback.conf
+options snd-aloop enable=1,1 index=1,2 pcm_substreams=8,8 id=Loopback1,Loopback2
+andrej@sandbox:~$ sudo reboot
+```
+
+After a reboot ALSA loopback devices can be validated by:
+
+```
+andrej@sandbox:~$ aplay -l|grep Loopback
+card 1: Loopback1 [Loopback], device 0: Loopback PCM [Loopback PCM]
+card 1: Loopback1 [Loopback], device 1: Loopback PCM [Loopback PCM]
+card 2: Loopback2 [Loopback], device 0: Loopback PCM [Loopback PCM]
+card 2: Loopback2 [Loopback], device 1: Loopback PCM [Loopback PCM]
+```
+
+Basically it should two loopback cards with two divices per card (full duplex).
+To check subdevices you can skip '|grep' part in the command and will see all (sub)devices available on the system.
+
+3. The last step to configure ALSA setup is enabling SlimPlexor plugin
+
+To enable SlimPlexor, one should edit /etc/asound.conf file to look like this:
+```
+andrej@sandbox:~$ more /etc/asound.conf 
+
+# Define SlimPlexor plugin
+pcm.slimplexor {
+  type slimplexor
+}
+
+# Define plug plugin which might be used a fallback (optional)
+pcm.plug {
+  type plug
+  slave {
+    pcm "hw:0,0"
+  }
+}
+
+# Following lines define SlimPlexor as a defult device
+pcm.!default {
+  type slimplexor
+}
+
+# Following lines are a backup for regular default device
+#pcm.!default {
+#  type hw
+#  card 0
+#}
+
+#ctl.!default {
+#  type hw
+#  card 0
+#}
+andrej@sandbox:~$
+```
+
 
 ## Compiling SlimPlexor
 
@@ -67,8 +125,8 @@ libasound_module_pcm_slimplexor.so  Makefile
 ## Installing SlimPlexor
 
 Installing SlimPlexor is just copying shared library (libasound_module_pcm_slimplexor.so) to the ALSA plugins directory.
-One way to find out the required directory is to try playing sound with this library installed.
-Then output would look something similar:
+One way to find out the required directory is to try playing sound without SlimPlexor library installed.
+Then output would look something similar to:
 
 ```
 andrej@sandbox:~$ aplay sample.wav
