@@ -5,14 +5,41 @@ Basically SlimPlexor does two things:
   * It adds an additional channel to the PCM stream with 'meta' data (start / stop markers, etc.)
   * It directs PCM stream to a predefined-by-rate ALSA loopback device. This is required as SlimStrimer reads PCM data from the same predefined-by-rate loopback devices.
 
+
 ## Prerequisites
 
-To be described...
+SlimPlexor is written in C so it requires C/C++ compiler and ALSA header files.
+An easy way to install required prerequisites is:
+
+```
+sudo get update
+sudo apt-get install build-essential libasound2-dev
+```
 
 
 ## Configuring ALSA
 
-To be described...
+Configuring ALSA is the most tricky part of installation steps as it requires a bit dipper knowledge of ALSA setup.
+The first thing to do is to make sure ALSA loopback module is loaded:
+
+```
+andrej@sandbox:~$ sudo lsmod |grep snd_aloop
+snd_aloop              24576  0
+snd_pcm               102400  4 snd_usb_audio,snd_ac97_codec,snd_ens1371,snd_aloop
+snd                    77824  11 snd_hwdep,snd_seq,snd_usb_audio,snd_ac97_codec,snd_timer,snd_rawmidi,snd_usbmidi_lib,snd_ens1371,snd_seq_device,snd_aloop,snd_pcm
+```
+
+If this command does not produce result as above then it means loopback module is not loaded.
+One way to correct that (and make sure ALSA configuration does not change after reboot):
+
+```
+andrej@sandbox:~$ echo "snd-aloop" | sudo tee /etc/modules-load.d/alsa-loopback.conf
+snd-aloop
+andrej@sandbox:~$ sudo reboot
+```
+
+After a reboot ALSA loopback module should be loaded; this can be validated as described above.
+The next step is to define 2 ALSA loopback devices (one device is not enough due to limit of max subdevices per one card):
 
 
 ## Compiling SlimPlexor
@@ -24,6 +51,13 @@ git clone https://github.com/gimesketvirtadieni/slimplexor.git
 cd slimplexor
 cd make
 make
+```
+
+If compilation is successful then there is a shared library created (along with the main file itself):
+
+```
+andrej@sandbox:~/slimplexor/make$ ls
+libasound_module_pcm_slimplexor.so  Makefile
 ```
 
 
@@ -39,7 +73,11 @@ ALSA lib dlmisc.c:254:(snd1_dlobj_cache_get) Cannot open shared library /usr/lib
 aplay: main:788: audio open error: No such device or address
 ```
 
-So obviously in my case the required directory where SlimPlexor's shared library should be copied to is '/usr/lib/x86_64-linux-gnu/alsa-lib'
+So obviously in my case the required directory where SlimPlexor's shared library should be copied to is '/usr/lib/x86_64-linux-gnu/alsa-lib':
+
+```
+andrej@sandbox:~/slimplexor/make$ sudo cp ./libasound_module_pcm_slimplexor.so /usr/lib/x86_64-linux-gnu/alsa-lib/
+```
 
 
 ## Validating SlimPlexor
