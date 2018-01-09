@@ -19,8 +19,9 @@ sudo apt-get install build-essential libasound2-dev
 
 ## Configuring ALSA
 
-Configuring ALSA is the most tricky part of installation steps as it requires a bit dipper knowledge of ALSA setup.
-The first thing to do is to make sure ALSA loopback module is loaded:
+Configuring ALSA is the most tricky part of installation steps as it requires a bit dipper knowledge of ALSA setup.  
+IMPORTANT NOTE: ALSA setup is Linux distro specific, so you might need to check ALSA documentation if it does not work for you.  
+1. The first thing to do is to make sure ALSA loopback module is loaded:
 
 ```
 andrej@sandbox:~$ sudo lsmod |grep snd_aloop
@@ -38,8 +39,8 @@ snd-aloop
 andrej@sandbox:~$ sudo reboot
 ```
 
-After a reboot ALSA loopback module should be loaded; this can be validated as described above.
-The next step is to define 2 ALSA loopback devices (one device is not enough due to limit of max subdevices per one card):
+After a reboot ALSA loopback module should be loaded (this can be validated as described above).  
+2. The next step is to define 2 ALSA loopback devices (one device is not enough due to limit of max subdevices per one card):
 
 
 ## Compiling SlimPlexor
