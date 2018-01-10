@@ -3,10 +3,13 @@
 SlimPlexor is an ALSA plugin required to capture and deliver PCM stream to SlimStrimer application via ALSA loopback devices.
 Basically SlimPlexor does two things:
   * It adds an additional channel to the PCM stream with 'meta' data (start / stop markers, etc.)
-  * It directs PCM stream to a predefined-by-rate ALSA loopback device. This is required as SlimStrimer reads PCM data from the same predefined-by-rate loopback devices.
+  * It directs PCM stream to a predefined-by-rate ALSA loopback device. This is required for SlimStrimer to read PCM data from the same predefined-by-rate loopback devices.
+
+Below description provides steps to build (compile) and setup ALSA with SlimSplexor as default device.  
+Please note that setup process is very dependant on Linux distro and even distro version, so use it as a 'direction' rather than an 'instruction'.
 
 
-## Prerequisites
+## Required prerequisites
 
 SlimPlexor is written in C so it requires C/C++ compiler and ALSA header files.
 An easy way to install required prerequisites is:
@@ -42,7 +45,7 @@ andrej@sandbox:~$ sudo reboot
  
 After a reboot ALSA loopback module should be loaded (this can be validated as described above).  
 
-2. The next step is to define 2 ALSA loopback devices (one device is not enough due to limit of max subdevices per one card):
+2. The next step is to define 2 ALSA loopback devices (one device is not enough due to a limit for max subdevices per one card)
 
 One way to define required loopback devices is:
 
@@ -62,8 +65,8 @@ card 2: Loopback2 [Loopback], device 0: Loopback PCM [Loopback PCM]
 card 2: Loopback2 [Loopback], device 1: Loopback PCM [Loopback PCM]
 ```
 
-Basically it should two loopback cards with two divices per card (full duplex).
-To check subdevices you can skip '|grep' part in the command and will see all (sub)devices available on the system.
+Basically the output shows that there are two loopback cards with two divices per card (full duplex).
+To check subdevices you can skip '|grep Loopback' part in the command and will see all (sub)devices available on the system (you should be able to see 8 subdevices per each loopback device).
 
 3. The last step to configure ALSA setup is enabling SlimPlexor plugin
 
@@ -76,7 +79,7 @@ pcm.slimplexor {
   type slimplexor
 }
 
-# Define plug plugin which might be used a fallback (optional)
+# Define 'plug' plugin which might be used as a fallback (optional)
 pcm.plug {
   type plug
   slave {
@@ -84,12 +87,12 @@ pcm.plug {
   }
 }
 
-# Following lines define SlimPlexor as a defult device
+# Following lines define SlimPlexor as a default device
 pcm.!default {
   type slimplexor
 }
 
-# Following lines are a backup for regular default device
+# Following lines are a backup for regular default device (can be used to disable SlimPlexor)
 #pcm.!default {
 #  type hw
 #  card 0
@@ -105,7 +108,7 @@ andrej@sandbox:~$
 
 ## Compiling SlimPlexor
 
-Building SlimPlexor is as easy as that:
+Building SlimPlexor is as easy as that (assuming all prerequisites are installed):
 
 ```
 git clone https://github.com/gimesketvirtadieni/slimplexor.git
@@ -125,8 +128,8 @@ libasound_module_pcm_slimplexor.so  Makefile
 ## Installing SlimPlexor
 
 Installing SlimPlexor is just copying shared library (libasound_module_pcm_slimplexor.so) to the ALSA plugins directory.
-One way to find out the required directory is to try playing sound without SlimPlexor library installed.
-Then output would look something similar to:
+One way to find out what ALSA plugin directory is - try playing sound without SlimPlexor library installed.
+Then output would look similar to:
 
 ```
 andrej@sandbox:~$ aplay sample.wav
@@ -134,7 +137,7 @@ ALSA lib dlmisc.c:254:(snd1_dlobj_cache_get) Cannot open shared library /usr/lib
 aplay: main:788: audio open error: No such device or address
 ```
 
-So obviously in my case the required directory where SlimPlexor's shared library should be copied to is '/usr/lib/x86_64-linux-gnu/alsa-lib':
+So obviously in my case the required directory where SlimPlexor's shared library should be placed is '/usr/lib/x86_64-linux-gnu/alsa-lib':
 
 ```
 andrej@sandbox:~/slimplexor/make$ sudo cp ./libasound_module_pcm_slimplexor.so /usr/lib/x86_64-linux-gnu/alsa-lib/
@@ -143,7 +146,7 @@ andrej@sandbox:~/slimplexor/make$ sudo cp ./libasound_module_pcm_slimplexor.so /
 
 ## Validating SlimPlexor
 
-If SlimPlexor was configured properly, then playback output to the terminal should look like this:
+If SlimPlexor was configured properly, then output to the terminal while playing audio by any application should look like this:
 
 ```
 andrej@sandbox:~$ aplay sample.wav 
@@ -152,3 +155,6 @@ INFO: set_dst_hw_params: destination device=hw:1,0,7
 INFO: set_dst_hw_params: destination period size=2048
 INFO: set_dst_hw_params: destination periods=8
 ```
+
+That's it, SlimPlexor is setup as required.
+Proceed to [SlimStreamer](https://github.com/gimesketvirtadieni/slimstreamer) for streaming audio being played by any application that outouts it to the default ALSA device ;)
