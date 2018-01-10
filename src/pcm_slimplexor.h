@@ -95,15 +95,15 @@ const unsigned int supported_channels[] =
 
 const unsigned int supported_rates[] =
 {
-	5512,
 	8000,
 	11025,
+	12000,
 	16000,
-	22050,
+	22500,
+	24000,
 	32000,
 	44100,
 	48000,
-	64000,
 	88200,
 	96000,
 	176400,

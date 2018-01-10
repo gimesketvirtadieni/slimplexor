@@ -632,23 +632,23 @@ SND_PCM_PLUGIN_DEFINE_FUNC(slimplexor)
     /* initializing rate->device map data structure */
     if (!error)
     {
-    	plugin_data->rate_device_map[0].rate    = 5512;
+    	plugin_data->rate_device_map[0].rate    = 8000;
     	plugin_data->rate_device_map[0].device  = "hw:1,0,1";
-    	plugin_data->rate_device_map[1].rate    = 8000;
+    	plugin_data->rate_device_map[1].rate    = 11025;
     	plugin_data->rate_device_map[1].device  = "hw:1,0,2";
-    	plugin_data->rate_device_map[2].rate    = 11025;
+    	plugin_data->rate_device_map[2].rate    = 12000;
     	plugin_data->rate_device_map[2].device  = "hw:1,0,3";
     	plugin_data->rate_device_map[3].rate    = 16000;
     	plugin_data->rate_device_map[3].device  = "hw:1,0,4";
-    	plugin_data->rate_device_map[4].rate    = 22050;
+    	plugin_data->rate_device_map[4].rate    = 22500;
     	plugin_data->rate_device_map[4].device  = "hw:1,0,5";
-    	plugin_data->rate_device_map[5].rate    = 32000;
+    	plugin_data->rate_device_map[5].rate    = 24000;
     	plugin_data->rate_device_map[5].device  = "hw:1,0,6";
-    	plugin_data->rate_device_map[6].rate    = 44100;
+    	plugin_data->rate_device_map[6].rate    = 32000;
     	plugin_data->rate_device_map[6].device  = "hw:1,0,7";
-    	plugin_data->rate_device_map[7].rate    = 48000;
+    	plugin_data->rate_device_map[7].rate    = 44100;
     	plugin_data->rate_device_map[7].device  = "hw:2,0,1";
-    	plugin_data->rate_device_map[8].rate    = 64000;
+    	plugin_data->rate_device_map[8].rate    = 48000;
     	plugin_data->rate_device_map[8].device  = "hw:2,0,2";
     	plugin_data->rate_device_map[9].rate    = 88200;
     	plugin_data->rate_device_map[9].device  = "hw:2,0,3";
