@@ -7,7 +7,7 @@
 BASE_DIRECTORY        = ..
 SOURCES              += $(BASE_DIRECTORY)/src
 HEADERS              += -I$(SOURCES)/src
-SYMBOLS              += -DPIC
+SYMBOLS              +=
 EXECUTABLE            = libasound_module_pcm_slimplexor.so
 
 CXX                   = gcc
