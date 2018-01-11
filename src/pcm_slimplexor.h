@@ -10,6 +10,9 @@
  * Author: gimesketvirtadieni at gmail dot com (Andrej Kislovskij)
  */
 
+/* required for ALSA plugin */
+#define PIC
+
 #include <alsa/asoundlib.h>
 #include <alsa/pcm_external.h>
 #include <stddef.h>  /* size_t */
