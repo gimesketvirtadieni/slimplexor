@@ -124,7 +124,7 @@ andrej@sandbox:~/slimplexor/make$ sudo cp ./libasound_module_pcm_slimplexor.so /
 
 ## Compiling SlimPlexor (optional)
 
-An alternative approach to downloading a shared library from github is to compile it from the source code.
+An alternative approach to downloading a shared library from github is compiling it from the source code.
 
 1. Required prerequisites
 
