@@ -10,6 +10,9 @@
  * Author: gimesketvirtadieni at gmail dot com (Andrej Kislovskij)
  */
 
+#ifndef SLIMPLEXOR_H
+#define SLIMPLEXOR_H
+
 /* required for ALSA plugin */
 #define PIC
 
@@ -47,7 +50,7 @@ typedef struct plugin_data
 	snd_pcm_sframes_t  pointer;
 	snd_pcm_format_t   src_format;
 	char*              dst_device;
-	snd_pcm_t*         dst_pcm;
+	snd_pcm_t*         dst_pcm_handle;
 	unsigned int       dst_channels;
 	unsigned int       dst_format;
 	snd_pcm_uframes_t  dst_period_size;
@@ -66,8 +69,9 @@ static int               callback_start(snd_pcm_ioplug_t *io);
 static int               callback_stop(snd_pcm_ioplug_t *io);
 static int               callback_sw_params(snd_pcm_ioplug_t *io, snd_pcm_sw_params_t *params);
 static snd_pcm_sframes_t callback_transfer(snd_pcm_ioplug_t *io, const snd_pcm_channel_area_t *areas, snd_pcm_uframes_t offset, snd_pcm_uframes_t size);
+static int               open_destination_device(plugin_data_t* plugin_data);
+static void              close_destination_device(plugin_data_t* plugin_data);
 static void              copy_frames(plugin_data_t* plugin_data, unsigned char* pcm_data, snd_pcm_uframes_t frames);
-static void              release_resources(plugin_data_t* plugin_data);
 static int               set_src_hw_params(snd_pcm_ioplug_t *io);
 static int               set_dst_hw_params(plugin_data_t* plugin_data, snd_pcm_hw_params_t *params);
 static int               set_dst_sw_params(plugin_data_t* plugin_data, snd_pcm_sw_params_t *params);
@@ -75,52 +79,4 @@ static void              write_stream_marker(plugin_data_t* plugin_data, unsigne
 static snd_pcm_sframes_t write_to_dst(plugin_data_t* plugin_data);
 
 
-const unsigned int supported_accesses[] =
-{
-	SND_PCM_ACCESS_RW_INTERLEAVED
-};
-
-
-const unsigned int supported_formats[] =
-{
-	SND_PCM_FORMAT_S8,
-	SND_PCM_FORMAT_S16_LE,
-	SND_PCM_FORMAT_S24_LE,
-	SND_PCM_FORMAT_S32_LE,
-};
-
-
-const unsigned int supported_channels[] =
-{
-	2
-};
-
-
-const unsigned int supported_rates[] =
-{
-	8000,
-	11025,
-	12000,
-	16000,
-	22500,
-	24000,
-	32000,
-	44100,
-	48000,
-	88200,
-	96000,
-	176400,
-	192000
-};
-
-
-const snd_pcm_ioplug_callback_t callbacks = {
-	.start     = callback_start,
-	.stop      = callback_stop,
-	.pointer   = callback_pointer,
-	.close     = callback_close,
-	.hw_params = callback_hw_params,
-	.sw_params = callback_sw_params,
-	.prepare   = callback_prepare,
-	.transfer  = callback_transfer,
-};
+#endif  /* SLIMPLEXOR_H */

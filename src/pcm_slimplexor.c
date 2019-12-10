@@ -13,6 +13,7 @@
 #include <stdlib.h>
 
 #include "pcm_slimplexor.h"
+#include "globals.h"
 
 
 static int callback_close(snd_pcm_ioplug_t *io)
@@ -22,25 +23,29 @@ static int callback_close(snd_pcm_ioplug_t *io)
     int            error       = 0;
 	plugin_data_t* plugin_data = (plugin_data_t*)io->private_data;
 
-	if (plugin_data->dst_pcm)
+    INF("HERE1.1");
+
+    if (plugin_data->dst_pcm_handle)
 	{
-		write_stream_marker(plugin_data, END_OF_STREAM_MARKER);
+        INF("HERE1.2");
+
+        write_stream_marker(plugin_data, END_OF_STREAM_MARKER);
 
 		/* draining and closing destination stream even if there were any errors */
-		if ((error = snd_pcm_drain(plugin_data->dst_pcm)) < 0)
+		if ((error = snd_pcm_drain(plugin_data->dst_pcm_handle)) < 0)
 		{
 			ERR("Error while draining target device: %s", snd_strerror(error));
 		}
-		if ((error = snd_pcm_close(plugin_data->dst_pcm)) < 0)
-		{
-			ERR("Error while closing target device: %s", snd_strerror(error));
-		}
-	}
 
-	/* releasing resources */
-	release_resources(plugin_data);
+		INF("HERE1.3");
 
-	return 0;
+		/* closing destination device which will release relevant resources */
+		close_destination_device(plugin_data);
+    }
+
+    INF("HERE1.4");
+
+    return 0;
 }
 
 
@@ -49,6 +54,9 @@ static int callback_hw_params(snd_pcm_ioplug_t *io, snd_pcm_hw_params_t *params)
     DBG("");
 
     plugin_data_t* plugin_data = (plugin_data_t*)io->private_data;
+
+	/* closing the target device first to allow multiple calls to snd_pcm_prepare */
+	close_destination_device(plugin_data);
 
 	/* setting up target device hardware parameters */
 	return set_dst_hw_params(plugin_data, params);
@@ -77,16 +85,32 @@ static int callback_prepare(snd_pcm_ioplug_t *io)
 	/* resetting hw buffer pointer */
 	plugin_data->pointer = 0;
 
-	/* preparing target device and starting playback */
-	if (!error)
+	INF("HERE2.1 state=%d", snd_pcm_state(plugin_data->dst_pcm_handle));
+
+	if (snd_pcm_state(plugin_data->dst_pcm_handle) > SND_PCM_STATE_PREPARED)
 	{
-		error = snd_pcm_prepare(plugin_data->dst_pcm);
-	}
+        return error;
+    }
 
-	/* marking the biginning of PCM stream */
-	write_stream_marker(plugin_data, BEGINNING_OF_STREAM_MARKER);
+    INF("HERE2.2 error=%d", error);
 
-	return error;
+    /* preparing target device and starting playback */
+    if ((error = snd_pcm_prepare(plugin_data->dst_pcm_handle)) < 0)
+    {
+        ERR("HERE2.3 error=%d", error);
+    }
+
+    if (!error)
+    {
+        INF("HERE2.4 error=%d", error);
+
+        /* marking the biginning of PCM stream */
+        write_stream_marker(plugin_data, BEGINNING_OF_STREAM_MARKER);
+    }
+
+    INF("HERE2.5 error=%d", error);
+
+    return error;
 }
 
 
@@ -145,6 +169,41 @@ static snd_pcm_sframes_t callback_transfer(snd_pcm_ioplug_t *io, const snd_pcm_c
 }
 
 
+static void close_destination_device(plugin_data_t* plugin_data)
+{
+	INF("HERE3.1");
+
+    /* making sure destination device handle was created; otherwise there is nothing to close */
+	if (!plugin_data->dst_pcm_handle)
+	{
+		return;
+	}
+
+	int error = 0;
+
+	INF("HERE3.2");
+
+    if ((error = snd_pcm_close(plugin_data->dst_pcm_handle)) < 0)
+	{
+		WRN("Error while closing destination device: %s", snd_strerror(error));
+	}
+
+	INF("HERE3.3");
+
+    if (plugin_data->dst_buffer)
+	{
+        INF("HERE3.4");
+
+        free(plugin_data->dst_buffer);
+		plugin_data->dst_buffer = NULL;
+	}
+
+	INF("HERE3.5");
+
+    plugin_data->dst_pcm_handle = NULL;
+}
+
+
 static void copy_frames(plugin_data_t* plugin_data, unsigned char* pcm_data, snd_pcm_uframes_t frames)
 {
 	size_t         sample_size        = (snd_pcm_format_physical_width(plugin_data->src_format) >> 3);
@@ -186,20 +245,228 @@ static void copy_frames(plugin_data_t* plugin_data, unsigned char* pcm_data, snd
 }
 
 
-static void release_resources(plugin_data_t* plugin_data)
+static int open_destination_device(plugin_data_t* plugin_data)
 {
-	if (!plugin_data)
+	int                  error     = 0;
+	snd_pcm_hw_params_t* hw_params = NULL;
+
+    /* opening the target device */
+    if (!error)
+    {
+        if ((error = snd_pcm_open(&plugin_data->dst_pcm_handle, plugin_data->dst_device, SND_PCM_STREAM_PLAYBACK, 0)) < 0)
+		{
+			ERR("Could not open destination device: %s", snd_strerror(error));
+		}
+    }
+
+    /* allocating hardware parameters object and fill it with default values */
+    if (!error)
+    {
+    	if ((error = snd_pcm_hw_params_malloc(&hw_params)) < 0)
+		{
+			ERR("Could not allocate HW parameters: %s", snd_strerror(error));
+		}
+    }
+    if (!error)
+    {
+    	if ((error = snd_pcm_hw_params_any(plugin_data->dst_pcm_handle, hw_params)) < 0)
+		{
+			ERR("Could not fill HW parameters with defaults: %s", snd_strerror(error));
+		}
+    }
+
+    /* setting target device parameters */
+    if (!error)
+    {
+		if ((error = snd_pcm_hw_params_set_access(plugin_data->dst_pcm_handle, hw_params, SND_PCM_ACCESS_RW_INTERLEAVED)) < 0)
+		{
+			ERR("Could not set destination device access mode: %s", snd_strerror(error));
+		}
+    }
+	if (!error)
 	{
+		if ((error = snd_pcm_hw_params_set_format(plugin_data->dst_pcm_handle, hw_params, plugin_data->dst_format)) < 0)
+		{
+			ERR("Could not set destination device format: %s %d", snd_strerror(error), plugin_data->dst_format);
+		}
+	}
+	if (!error)
+	{
+		if ((error = snd_pcm_hw_params_set_channels(plugin_data->dst_pcm_handle, hw_params, plugin_data->alsa_data.channels + 1)) < 0)
+		{
+			ERR("Could not set amount of channels for destination device: %s", snd_strerror(error));
+		}
+	}
+	if (!error)
+	{
+		if ((error = snd_pcm_hw_params_set_rate(plugin_data->dst_pcm_handle, hw_params, plugin_data->alsa_data.rate, 0)) < 0)
+		{
+			ERR("Could not set sample rate for destination device: %s", snd_strerror(error));
+		}
+	}
+    if (!error)
+    {
+    	if ((error = snd_pcm_hw_params_set_period_size(plugin_data->dst_pcm_handle, hw_params, plugin_data->dst_period_size, 0)) < 0)
+		{
+			ERR("Could not set period size for destination device: %s", snd_strerror(error));
+		}
+    }
+    if (!error)
+    {
+    	if ((error = snd_pcm_hw_params_set_periods(plugin_data->dst_pcm_handle, hw_params, plugin_data->dst_periods, 0)) < 0)
+		{
+			ERR("Could not set amount of periods for destination device: %s", snd_strerror(error));
+		}
+    }
+
+	/* saving hardware parameters for target device */
+    if (!error)
+	{
+		if ((error = snd_pcm_hw_params(plugin_data->dst_pcm_handle, hw_params)) < 0)
+		{
+			ERR("Could set hardware parameters: %s", snd_strerror(error));
+		}
+	}
+	if (!hw_params)
+	{
+		snd_pcm_hw_params_free(hw_params);
+	}
+
+	/* allocating buffer required to transfer data to target device */
+	if (!error)
+	{
+		/* target buffer must not be equal to the source buffer size; otherwise pointer callback will always return 0 */
+		plugin_data->dst_buffer_size    = plugin_data->dst_period_size;
+		plugin_data->dst_buffer_current = 0;
+
+		/* adding extra space for one extra channel */
+		size_t target_size = plugin_data->dst_buffer_size * (snd_pcm_format_physical_width(plugin_data->dst_format) >> 3) * (plugin_data->alsa_data.channels + 1);
+
+	    /* calloc sets content to zero */
+		plugin_data->dst_buffer = (unsigned char*) calloc(1, target_size);
 		if (!plugin_data->dst_buffer)
 		{
-			free(plugin_data->dst_buffer);
+			error = -ENOMEM;
+	        ERR("Could not allocate memory for transfer buffer; requested %lu bytes", target_size);
 		}
-		if (!plugin_data->rate_device_map)
-		{
-			free(plugin_data->rate_device_map);
-		}
-		free(plugin_data);
 	}
+
+	return error;
+}
+
+
+static int set_dst_hw_params(plugin_data_t* plugin_data, snd_pcm_hw_params_t *params)
+{
+	int error = 0;
+
+    /* looking up for the target device name based on sample rate */
+	plugin_data->dst_device = NULL;
+	for (unsigned int i = 0; i < plugin_data->rate_device_map_size && !plugin_data->dst_device; i++)
+    {
+    	if (plugin_data->rate_device_map[i].rate == plugin_data->alsa_data.rate)
+    	{
+    		plugin_data->dst_device = plugin_data->rate_device_map[i].device;
+    	}
+    }
+    if (!plugin_data->dst_device)
+    {
+		error = -ENODEV;
+        ERR("Could not find target device for sample rate %u", plugin_data->alsa_data.rate);
+    }
+    else
+    {
+	    INF("destination device=%s", plugin_data->dst_device);
+    }
+
+    /* collecting details about the PCM stream */
+	if (!error)
+	{
+	    if ((error = snd_pcm_hw_params_get_period_size(params, &plugin_data->dst_period_size, 0)) < 0)
+		{
+			ERR("Could not get period size value: %s", snd_strerror(error));
+		}
+	    else
+	    {
+		    INF("destination period size=%ld", plugin_data->dst_period_size);
+	    }
+	}
+	if (!error)
+	{
+		if ((error = snd_pcm_hw_params_get_periods(params, &plugin_data->dst_periods, 0)) < 0)
+		{
+			ERR("Could not get buffer size value: %s", snd_strerror(error));
+		}
+		else
+		{
+		    INF("destination periods=%d", plugin_data->dst_periods);
+		}
+	}
+	if (!error)
+	{
+		if ((error = snd_pcm_hw_params_get_format(params, &plugin_data->src_format)) < 0)
+		{
+			ERR("Could not get format value: %s", snd_strerror(error));
+		}
+	}
+
+    if (!error)
+    {
+        error = open_destination_device(plugin_data);
+	}
+
+	return error;
+}
+
+
+static int set_dst_sw_params(plugin_data_t* plugin_data, snd_pcm_sw_params_t *params)
+{
+	int                  error     = 0;
+	snd_pcm_sw_params_t* sw_params = NULL;
+
+	/* allocating software parameters object and fill it with default values */
+    if (!error)
+	{
+		if ((error = snd_pcm_sw_params_malloc(&sw_params)) < 0)
+		{
+			ERR("Could not allocate SW parameters: %s", snd_strerror(error));
+		}
+	}
+    if (!error)
+	{
+    	if ((error = snd_pcm_sw_params_current(plugin_data->dst_pcm_handle, sw_params)) < 0)
+		{
+			ERR("Could not fill SW parameters with defaults: %s", snd_strerror(error));
+		}
+	}
+    if (!error)
+	{
+    	if ((error = snd_pcm_sw_params_set_start_threshold(plugin_data->dst_pcm_handle, sw_params, plugin_data->dst_buffer_size)) < 0)
+		{
+			ERR("Could not set threshold for destination device: %s", snd_strerror(error));
+		}
+	}
+    if (!error)
+	{
+    	if ((error = snd_pcm_sw_params_set_avail_min(plugin_data->dst_pcm_handle, sw_params, plugin_data->dst_period_size)) < 0)
+		{
+			ERR("Could not set min available amount for destination device: %s", snd_strerror(error));
+		}
+	}
+
+    /* saving software parameters for target device */
+	if (!error)
+	{
+		if ((error = snd_pcm_sw_params(plugin_data->dst_pcm_handle, sw_params)) < 0)
+		{
+			ERR("Could set software parameters: %s", snd_strerror(error));
+		}
+	}
+	if (sw_params)
+	{
+		snd_pcm_sw_params_free(sw_params);
+	}
+
+	return error;
 }
 
 
@@ -263,240 +530,12 @@ static int set_src_hw_params(snd_pcm_ioplug_t *io)
 }
 
 
-static int set_dst_hw_params(plugin_data_t* plugin_data, snd_pcm_hw_params_t *params)
-{
-	int                  error     = 0;
-	snd_pcm_hw_params_t* hw_params = NULL;
-
-    /* looking up for the target device name based on sample rate */
-	plugin_data->dst_device = NULL;
-	for (unsigned int i = 0; i < plugin_data->rate_device_map_size && !plugin_data->dst_device; i++)
-    {
-    	if (plugin_data->rate_device_map[i].rate == plugin_data->alsa_data.rate)
-    	{
-    		plugin_data->dst_device = plugin_data->rate_device_map[i].device;
-    	}
-    }
-    if (!plugin_data->dst_device)
-    {
-		error = -ENODEV;
-        ERR("Could not find target device for sample rate %u", plugin_data->alsa_data.rate);
-    }
-    else
-    {
-	    INF("destination device=%s", plugin_data->dst_device);
-    }
-
-    /* collecting details about the PCM stream */
-	if (!error)
-	{
-	    if ((error = snd_pcm_hw_params_get_period_size(params, &plugin_data->dst_period_size, 0)) < 0)
-		{
-			ERR("Could not get period size value: %s", snd_strerror(error));
-		}
-	    else
-	    {
-		    INF("destination period size=%ld", plugin_data->dst_period_size);
-	    }
-	}
-	if (!error)
-	{
-		if ((error = snd_pcm_hw_params_get_periods(params, &plugin_data->dst_periods, 0)) < 0)
-		{
-			ERR("Could not get buffer size value: %s", snd_strerror(error));
-		}
-		else
-		{
-		    INF("destination periods=%d", plugin_data->dst_periods);
-		}
-	}
-	if (!error)
-	{
-		if ((error = snd_pcm_hw_params_get_format(params, &plugin_data->src_format)) < 0)
-		{
-			ERR("Could not get format value: %s", snd_strerror(error));
-		}
-	}
-
-	/* allocating buffer required to transfer data to target device */
-	if (!error)
-	{
-		/* target buffer must not be equal to the source buffer size; otherwise pointer callback will always return 0 */
-		plugin_data->dst_buffer_size    = plugin_data->dst_period_size;
-		plugin_data->dst_buffer_current = 0;
-		plugin_data->dst_format         = TARGET_FORMAT;
-
-		/* adding extra space for one extra channel */
-		size_t target_size = plugin_data->dst_buffer_size * (snd_pcm_format_physical_width(plugin_data->dst_format) >> 3) * (plugin_data->alsa_data.channels + 1);
-
-		/* releasing memory in case of multiple invocation of HW params callback */
-		if (plugin_data->dst_buffer)
-	    {
-	    	free(plugin_data->dst_buffer);
-	    }
-
-	    /* calloc sets content to zero */
-		plugin_data->dst_buffer = (unsigned char*) calloc(1, target_size);
-		if (!plugin_data->dst_buffer)
-		{
-			error = -ENOMEM;
-	        ERR("Could not allocate memory for transfer buffer; requested %lu bytes", target_size);
-		}
-	}
-
-    /* opening the target device */
-    if (!error)
-    {
-		/* closing destination device in case of multiple invocation of HW params callback */
-    	if (plugin_data->dst_pcm)
-    	{
-    		int tmp;
-        	if ((tmp = snd_pcm_close(plugin_data->dst_pcm)) < 0)
-        	{
-        		WRN("Error while closing destination device: %s", snd_strerror(tmp));
-        	}
-    	}
-		if ((error = snd_pcm_open(&plugin_data->dst_pcm, plugin_data->dst_device, SND_PCM_STREAM_PLAYBACK, 0)) < 0)
-		{
-			ERR("Could not open destination device: %s", snd_strerror(error));
-		}
-    }
-
-    /* allocating hardware parameters object and fill it with default values */
-    if (!error)
-    {
-    	if ((error = snd_pcm_hw_params_malloc(&hw_params)) < 0)
-		{
-			ERR("Could not allocate HW parameters: %s", snd_strerror(error));
-		}
-    }
-    if (!error)
-    {
-    	if ((error = snd_pcm_hw_params_any(plugin_data->dst_pcm, hw_params)) < 0)
-		{
-			ERR("Could not fill HW parameters with defaults: %s", snd_strerror(error));
-		}
-    }
-
-    /* setting target device parameters */
-    if (!error)
-    {
-		if ((error = snd_pcm_hw_params_set_access(plugin_data->dst_pcm, hw_params, SND_PCM_ACCESS_RW_INTERLEAVED)) < 0)
-		{
-			ERR("Could not set destination device access mode: %s", snd_strerror(error));
-		}
-    }
-	if (!error)
-	{
-		if ((error = snd_pcm_hw_params_set_format(plugin_data->dst_pcm, hw_params, plugin_data->dst_format)) < 0)
-		{
-			ERR("Could not set destination device format: %s", snd_strerror(error));
-		}
-	}
-	if (!error)
-	{
-		if ((error = snd_pcm_hw_params_set_channels(plugin_data->dst_pcm, hw_params, plugin_data->alsa_data.channels + 1)) < 0)
-		{
-			ERR("Could not set amount of channels for destination device: %s", snd_strerror(error));
-		}
-	}
-	if (!error)
-	{
-		if ((error = snd_pcm_hw_params_set_rate(plugin_data->dst_pcm, hw_params, plugin_data->alsa_data.rate, 0)) < 0)
-		{
-			ERR("Could not set sample rate for destination device: %s", snd_strerror(error));
-		}
-	}
-    if (!error)
-    {
-    	if ((error = snd_pcm_hw_params_set_period_size(plugin_data->dst_pcm, hw_params, plugin_data->dst_period_size, 0)) < 0)
-		{
-			ERR("Could not set period size for destination device: %s", snd_strerror(error));
-		}
-    }
-    if (!error)
-    {
-    	if ((error = snd_pcm_hw_params_set_periods(plugin_data->dst_pcm, hw_params, plugin_data->dst_periods, 0)) < 0)
-		{
-			ERR("Could not set amount of periods for destination device: %s", snd_strerror(error));
-		}
-    }
-
-	/* saving hardware parameters for target device */
-    if (!error)
-	{
-		if ((error = snd_pcm_hw_params(plugin_data->dst_pcm, hw_params)) < 0)
-		{
-			ERR("Could set hardware parameters: %s", snd_strerror(error));
-		}
-	}
-	if (!hw_params)
-	{
-		snd_pcm_hw_params_free(hw_params);
-	}
-
-	return error;
-}
-
-
-static int set_dst_sw_params(plugin_data_t* plugin_data, snd_pcm_sw_params_t *params)
-{
-	int                  error     = 0;
-	snd_pcm_sw_params_t* sw_params = NULL;
-
-	/* allocating software parameters object and fill it with default values */
-    if (!error)
-	{
-		if ((error = snd_pcm_sw_params_malloc(&sw_params)) < 0)
-		{
-			ERR("Could not allocate SW parameters: %s", snd_strerror(error));
-		}
-	}
-    if (!error)
-	{
-    	if ((error = snd_pcm_sw_params_current(plugin_data->dst_pcm, sw_params)) < 0)
-		{
-			ERR("Could not fill SW parameters with defaults: %s", snd_strerror(error));
-		}
-	}
-    if (!error)
-	{
-    	if ((error = snd_pcm_sw_params_set_start_threshold(plugin_data->dst_pcm, sw_params, plugin_data->dst_buffer_size)) < 0)
-		{
-			ERR("Could not set threshold for destination device: %s", snd_strerror(error));
-		}
-	}
-    if (!error)
-	{
-    	if ((error = snd_pcm_sw_params_set_avail_min(plugin_data->dst_pcm, sw_params, plugin_data->dst_period_size)) < 0)
-		{
-			ERR("Could not set min available amount for destination device: %s", snd_strerror(error));
-		}
-	}
-
-    /* saving software parameters for target device */
-	if (!error)
-	{
-		if ((error = snd_pcm_sw_params(plugin_data->dst_pcm, sw_params)) < 0)
-		{
-			ERR("Could set software parameters: %s", snd_strerror(error));
-		}
-	}
-	if (sw_params)
-	{
-		snd_pcm_sw_params_free(sw_params);
-	}
-
-	return error;
-}
-
-
 static void write_stream_marker(plugin_data_t* plugin_data, unsigned char marker)
 {
     snd_pcm_sframes_t result = 0;
 
 	/* writting whatever is left in the target buffer */
-	while(plugin_data->dst_buffer_current > 0 && result >= 0)
+	while (plugin_data->dst_buffer_current > 0 && result >= 0)
 	{
 		result = write_to_dst(plugin_data);
 		if (result < 0)
@@ -517,7 +556,7 @@ static void write_stream_marker(plugin_data_t* plugin_data, unsigned char marker
 	}
 
 	/* making sure a single period is written */
-	for(plugin_data->dst_buffer_current = plugin_data->dst_buffer_size; plugin_data->dst_buffer_current > 0 && result >= 0;)
+	for (plugin_data->dst_buffer_current = plugin_data->dst_buffer_size; plugin_data->dst_buffer_current > 0 && result >= 0;)
 	{
 		result = write_to_dst(plugin_data);
 		if (result < 0)
@@ -536,12 +575,12 @@ static snd_pcm_sframes_t write_to_dst(plugin_data_t* plugin_data)
 	if (plugin_data->dst_buffer_current > 0)
 	{
 		/* writing to the target device */
-		result = snd_pcm_writei(plugin_data->dst_pcm, plugin_data->dst_buffer, plugin_data->dst_buffer_current);
+		result = snd_pcm_writei(plugin_data->dst_pcm_handle, plugin_data->dst_buffer, plugin_data->dst_buffer_current);
 
 		/* no need to restore from an error in case of -EAGAIN */
 		if (result < 0 && result != -EAGAIN)
 		{
-			result = snd_pcm_prepare(plugin_data->dst_pcm);
+			result = snd_pcm_prepare(plugin_data->dst_pcm_handle);
 			if (result < 0)
 			{
 				ERR("Target device restore error: %s", snd_strerror(result));
@@ -577,11 +616,11 @@ static snd_pcm_sframes_t write_to_dst(plugin_data_t* plugin_data)
 
 SND_PCM_PLUGIN_DEFINE_FUNC(slimplexor)
 {
-	int                   error       = 0;
+	int                   error          = 0;
+	plugin_data_t*        plugin_data    = NULL;
+	unsigned short        plugin_created = 0;
 	snd_config_iterator_t i;
 	snd_config_iterator_t next;
-	plugin_data_t*        plugin_data = NULL;
-	short                 created     = 0;
 
 	snd_config_for_each(i, next, conf)
 	{
@@ -627,6 +666,9 @@ SND_PCM_PLUGIN_DEFINE_FUNC(slimplexor)
 			error = -ENOMEM;
 		}
     }
+
+    /* useing a fixed format while writing to the target device */
+    plugin_data->dst_format = TARGET_FORMAT;
 
     /* TODO: should come from config */
     /* initializing rate->device map data structure */
@@ -677,8 +719,9 @@ SND_PCM_PLUGIN_DEFINE_FUNC(slimplexor)
 		if ((error = snd_pcm_ioplug_create(&plugin_data->alsa_data, name, stream, mode)) < 0)
 		{
 	        ERR("Could not register plugin within ALSA: %s", snd_strerror(error));
+		} else {
+			plugin_created = 1;
 		}
-		created = (!error ? 1 : 0);
     }
 
 	/* setting up hw parameters; error is printed within setup routing */
@@ -694,12 +737,16 @@ SND_PCM_PLUGIN_DEFINE_FUNC(slimplexor)
 	}
 	else
 	{
-		/* releasing resources if required */
-		if (!plugin_data && created)
+		/* plugin was not created properly */
+		if (!plugin_data && plugin_created)
 		{
 			snd_pcm_ioplug_delete(&plugin_data->alsa_data);
 		}
-		release_resources(plugin_data);
+		if (plugin_data->rate_device_map)
+		{
+			free(plugin_data->rate_device_map);
+			plugin_data->rate_device_map = NULL;
+		}
 	}
 
 	return error;
