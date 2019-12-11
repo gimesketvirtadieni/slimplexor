@@ -44,20 +44,21 @@ typedef struct rate_device_map
 
 typedef struct plugin_data
 {
-	snd_pcm_ioplug_t   alsa_data;
-	unsigned int       rate_device_map_size;
-	rate_device_map_t* rate_device_map;
-	snd_pcm_sframes_t  pointer;
-	snd_pcm_format_t   src_format;
-	char*              dst_device;
-	snd_pcm_t*         dst_pcm_handle;
-	unsigned int       dst_channels;
-	unsigned int       dst_format;
-	snd_pcm_uframes_t  dst_period_size;
-	unsigned int       dst_periods;
-	unsigned char*     dst_buffer;
-	snd_pcm_uframes_t  dst_buffer_size;
-	snd_pcm_uframes_t  dst_buffer_current;
+    snd_pcm_ioplug_t   alsa_data;
+    unsigned int       rate_device_map_size;
+    rate_device_map_t* rate_device_map;
+    snd_pcm_sframes_t  pointer;
+    snd_pcm_format_t   src_format;
+    char*              dst_device;
+    snd_pcm_t*         dst_pcm_handle;
+    unsigned int       dst_channels;
+    unsigned int       dst_format;
+    snd_pcm_uframes_t  dst_period_size;
+    unsigned int       dst_periods;
+    unsigned char*     dst_buffer;
+    snd_pcm_uframes_t  dst_buffer_size;
+    snd_pcm_uframes_t  dst_buffer_current;
+    unsigned short     transfer_started;
 } plugin_data_t;
 
 
