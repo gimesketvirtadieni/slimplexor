@@ -30,8 +30,11 @@ clean :
 cleanest : clean
 	rm $(EXECUTABLE)
 
-link : main
-	$(CXX) -shared -o $(EXECUTABLE) ./pcm_slimplexor.o $(LD_FLAGS)
+link : main func
+	$(CXX) -shared -o $(EXECUTABLE) ./slimplexor.o func.o $(LD_FLAGS)
 
 main :
-	$(CXX) -o pcm_slimplexor.o $(SOURCES)/pcm_slimplexor.c $(CXX_FLAGS)
+	$(CXX) -o slimplexor.o $(SOURCES)/slimplexor.c $(CXX_FLAGS)
+
+func :
+	$(CXX) -o func.o $(SOURCES)/func.c $(CXX_FLAGS)

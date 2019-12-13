@@ -62,22 +62,15 @@ typedef struct plugin_data
 } plugin_data_t;
 
 
-static int               callback_close(snd_pcm_ioplug_t *io);
-static int               callback_hw_params(snd_pcm_ioplug_t *io, snd_pcm_hw_params_t *params);
-static snd_pcm_sframes_t callback_pointer(snd_pcm_ioplug_t *io);
-static int               callback_prepare(snd_pcm_ioplug_t *io);
-static int               callback_start(snd_pcm_ioplug_t *io);
-static int               callback_stop(snd_pcm_ioplug_t *io);
-static int               callback_sw_params(snd_pcm_ioplug_t *io, snd_pcm_sw_params_t *params);
-static snd_pcm_sframes_t callback_transfer(snd_pcm_ioplug_t *io, const snd_pcm_channel_area_t *areas, snd_pcm_uframes_t offset, snd_pcm_uframes_t size);
-static int               open_destination_device(plugin_data_t* plugin_data);
-static void              close_destination_device(plugin_data_t* plugin_data);
-static void              copy_frames(plugin_data_t* plugin_data, unsigned char* pcm_data, snd_pcm_uframes_t frames);
-static int               set_src_hw_params(snd_pcm_ioplug_t *io);
-static int               set_dst_hw_params(plugin_data_t* plugin_data, snd_pcm_hw_params_t *params);
-static int               set_dst_sw_params(plugin_data_t* plugin_data, snd_pcm_sw_params_t *params);
-static void              write_stream_marker(plugin_data_t* plugin_data, unsigned char marker);
-static snd_pcm_sframes_t write_to_dst(plugin_data_t* plugin_data);
+int               open_destination_device(plugin_data_t* plugin_data);
+void              close_destination_device(plugin_data_t* plugin_data);
+void              copy_frames(plugin_data_t* plugin_data, unsigned char* pcm_data, snd_pcm_uframes_t frames);
+void              copy_sample(plugin_data_t* plugin_data, unsigned char* source_sample, size_t source_sample_size, unsigned char* target_sample);
+int               set_src_hw_params(snd_pcm_ioplug_t *io);
+int               set_dst_hw_params(plugin_data_t* plugin_data, snd_pcm_hw_params_t *params);
+int               set_dst_sw_params(plugin_data_t* plugin_data, snd_pcm_sw_params_t *params);
+void              write_stream_marker(plugin_data_t* plugin_data, unsigned char marker);
+snd_pcm_sframes_t write_to_dst(plugin_data_t* plugin_data);
 
 
 #endif  /* SLIMPLEXOR_H */
