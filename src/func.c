@@ -17,40 +17,40 @@
 
 const unsigned int supported_accesses[] =
 {
-	SND_PCM_ACCESS_RW_INTERLEAVED
+    SND_PCM_ACCESS_RW_INTERLEAVED
 };
 
 
 const unsigned int supported_formats[] =
 {
-	SND_PCM_FORMAT_S8,
-	SND_PCM_FORMAT_S16_LE,
-	SND_PCM_FORMAT_S24_LE,
-	SND_PCM_FORMAT_S32_LE,
+    SND_PCM_FORMAT_S8,
+    SND_PCM_FORMAT_S16_LE,
+    SND_PCM_FORMAT_S24_LE,
+    SND_PCM_FORMAT_S32_LE,
 };
 
 
 const unsigned int supported_channels[] =
 {
-	2
+    2
 };
 
 
 const unsigned int supported_rates[] =
 {
-	8000,
-	11025,
-	12000,
-	16000,
-	22500,
-	24000,
-	32000,
-	44100,
-	48000,
-	88200,
-	96000,
-	176400,
-	192000
+    8000,
+    11025,
+    12000,
+    16000,
+    22500,
+    24000,
+    32000,
+    44100,
+    48000,
+    88200,
+    96000,
+    176400,
+    192000
 };
 
 
@@ -67,6 +67,10 @@ void close_destination_device(plugin_data_t* plugin_data)
     if ((error = snd_pcm_close(plugin_data->dst_pcm_handle)) < 0)
     {
         WRN("Error while closing destination device: %s", snd_strerror(error));
+    }
+    else
+    {
+        INF("Destination device was closed");
     }
 
     if (plugin_data->dst_buffer)

@@ -23,9 +23,9 @@
 
 /* TODO: logging level from conf */
 #define DBG(fmt, arg...)           /* TODO: parametrize printf("DEBUG: %s: "   fmt "\n", __FUNCTION__ , ## arg) */
-#define INF(fmt, arg...)           printf("INFO: %s: "    fmt "\n", __FUNCTION__ , ## arg)
-#define ERR(fmt, arg...)           printf("ERROR: %s: "   fmt "\n", __FUNCTION__ , ## arg)
-#define WRN(fmt, arg...)           printf("WARNING: %s: " fmt "\n", __FUNCTION__ , ## arg)
+#define INF(fmt, arg...)           fprintf(stderr, "INFO: %s: "    fmt "\n", __FUNCTION__ , ## arg)
+#define ERR(fmt, arg...)           fprintf(stderr, "ERROR: %s: "   fmt "\n", __FUNCTION__ , ## arg)
+#define WRN(fmt, arg...)           fprintf(stderr, "WARNING: %s: " fmt "\n", __FUNCTION__ , ## arg)
 #define ARRAY_SIZE(a)              (sizeof(a)/sizeof((a)[0]))
 #define TARGET_FORMAT              SND_PCM_FORMAT_S32_LE
 #define PERIOD_SIZE_BYTES          16384  /* one period size = 16K bytes */
