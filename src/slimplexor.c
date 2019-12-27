@@ -14,10 +14,13 @@
 
 #include "slimplexor.h"
 
+/* define the default logging level (0 - NONE, 1 - ERROR, 2 - WARNING, 3 - INFO, 4 - DEBUG) */
+unsigned int log_level = 3;
+
 
 static int callback_close(snd_pcm_ioplug_t *io)
 {
-    DBG("");
+    LOG_DEBUG("Close stream callback was invoked");
 
     plugin_data_t* plugin_data = (plugin_data_t*)io->private_data;
 
@@ -31,7 +34,7 @@ static int callback_close(snd_pcm_ioplug_t *io)
             int tmp;
             if ((tmp = snd_pcm_drain(plugin_data->dst_pcm_handle)) < 0)
             {
-                WRN("Error while draining target device: %s", snd_strerror(tmp));
+                LOG_WARNING("Error while draining target device: %s", snd_strerror(tmp));
             }
             plugin_data->transfer_started = 0;
         }
@@ -47,7 +50,7 @@ static int callback_close(snd_pcm_ioplug_t *io)
 
 static int callback_hw_params(snd_pcm_ioplug_t *io, snd_pcm_hw_params_t *params)
 {
-    DBG("");
+    LOG_DEBUG("HW parameters setup callback was invoked");
 
     plugin_data_t* plugin_data = (plugin_data_t*)io->private_data;
 
@@ -65,7 +68,7 @@ static snd_pcm_sframes_t callback_pointer(snd_pcm_ioplug_t *io)
 
     plugin_data->pointer %= io->buffer_size;
 
-    /* DBG("pointer=%ld", plugin_data->pointer); */
+    /* LOG_DEBUG("pointer=%ld", plugin_data->pointer); */
 
     return plugin_data->pointer;
 }
@@ -73,7 +76,7 @@ static snd_pcm_sframes_t callback_pointer(snd_pcm_ioplug_t *io)
 
 static int callback_prepare(snd_pcm_ioplug_t *io)
 {
-    DBG("");
+    LOG_DEBUG("Prepare processing callback was invoked");
 
     int            error       = 0;
     plugin_data_t* plugin_data = (plugin_data_t*)io->private_data;
@@ -89,7 +92,7 @@ static int callback_prepare(snd_pcm_ioplug_t *io)
     /* preparing target device and starting playback */
     if ((error = snd_pcm_prepare(plugin_data->dst_pcm_handle)) < 0)
     {
-        ERR("Error while preparing destination device: %s", snd_strerror(error));
+        LOG_ERROR("Error while preparing destination device: %s", snd_strerror(error));
     }
 
     return error;
@@ -98,7 +101,7 @@ static int callback_prepare(snd_pcm_ioplug_t *io)
 
 static int callback_start(snd_pcm_ioplug_t *io)
 {
-    DBG("");
+    LOG_DEBUG("Start processing callback was invoked");
 
     return 0;
 }
@@ -106,7 +109,7 @@ static int callback_start(snd_pcm_ioplug_t *io)
 
 static int callback_stop(snd_pcm_ioplug_t *io)
 {
-    DBG("");
+    LOG_DEBUG("Stop processing callback was invoked");
 
     return 0;
 }
@@ -114,7 +117,7 @@ static int callback_stop(snd_pcm_ioplug_t *io)
 
 static int callback_sw_params(snd_pcm_ioplug_t *io, snd_pcm_sw_params_t *params)
 {
-    DBG("");
+    LOG_DEBUG("SW parameters setup callback was invoked");
 
     plugin_data_t* plugin_data = (plugin_data_t*)io->private_data;
 
@@ -127,6 +130,8 @@ static snd_pcm_sframes_t callback_transfer(snd_pcm_ioplug_t *io, const snd_pcm_c
     plugin_data_t*    plugin_data = (plugin_data_t*)io->private_data;
     snd_pcm_uframes_t frames      = plugin_data->dst_buffer_size - plugin_data->dst_buffer_current;
     unsigned char*    pcm_data    = (unsigned char*)areas->addr + (areas->first >> 3) + ((areas->step * offset) >> 3);
+
+    LOG_DEBUG("Data transfer callback was invoked - first=%u offset=%lu avail=%lu frames=%lu", areas->first, offset, frames_avail, frames);
 
     /* if this is the first time transfer is called then marking the biginning of PCM stream */
     if (!plugin_data->transfer_started)
@@ -149,12 +154,14 @@ static snd_pcm_sframes_t callback_transfer(snd_pcm_ioplug_t *io, const snd_pcm_c
     snd_pcm_sframes_t result = write_to_dst(plugin_data);
     if (result < 0)
     {
-        ERR("Error while writting to target device: %s", snd_strerror(result));
+        LOG_ERROR("Error while writting to target device: %s", snd_strerror(result));
+    }
+    else if (result < frames)
+    {
+        LOG_WARNING("Less frames were written to the target device than expected - frames=%lu result=%ld", frames, result);
     }
 
-    DBG("first=%u offset=%lu avail=%lu frames=%lu result=%ld", areas->first, offset, frames_avail, frames, result);
-
-    return frames;
+    return result;
 }
 
 
@@ -180,16 +187,49 @@ SND_PCM_PLUGIN_DEFINE_FUNC(slimplexor)
 
     snd_config_for_each(i, next, conf)
     {
-        snd_config_t *n = snd_config_iterator_entry(i);
-        const char   *id;
+        snd_config_t* n = snd_config_iterator_entry(i);
+        const char*   id;
+        const char*   value;
 
         if (snd_config_get_id(n, &id) < 0)
         {
             continue;
         }
 
-        if (strcmp(id, "comment") == 0 || strcmp(id, "type") == 0)
+        if (strcasecmp(id, "comment") == 0 || strcasecmp(id, "type") == 0)
         {
+            continue;
+        }
+
+        /* setting logging level */
+        if (strcasecmp(id, "log_level") == 0)
+        {
+            if (snd_config_get_string(n, &value) < 0)
+            {
+                continue;
+            }
+
+            if (strcasecmp(value, "none") == 0)
+            {
+                log_level = 0;
+            }
+            else if (strcasecmp(value, "error") == 0)
+            {
+                log_level = 1;
+            }
+            else if (strcasecmp(value, "warning") == 0)
+            {
+                log_level = 2;
+            }
+            else if (strcasecmp(value, "info") == 0)
+            {
+                log_level = 3;
+            }
+            else if (strcasecmp(value, "debug") == 0)
+            {
+                log_level = 4;
+            }
+            
             continue;
         }
     }
@@ -265,7 +305,7 @@ SND_PCM_PLUGIN_DEFINE_FUNC(slimplexor)
         if (setenv("LIBASOUND_THREAD_SAFE", "0", 1) < 0)
         {
             error = -EPERM;
-            ERR("Could not disable thread-safety for ALSA library");
+            LOG_ERROR("Could not disable thread-safety for ALSA library");
         }
     }
 
@@ -274,7 +314,7 @@ SND_PCM_PLUGIN_DEFINE_FUNC(slimplexor)
     {
         if ((error = snd_pcm_ioplug_create(&plugin_data->alsa_data, name, stream, mode)) < 0)
         {
-            ERR("Could not register plugin within ALSA: %s", snd_strerror(error));
+            LOG_ERROR("Could not register plugin within ALSA: %s", snd_strerror(error));
         } else {
             plugin_created = 1;
         }
@@ -305,6 +345,11 @@ SND_PCM_PLUGIN_DEFINE_FUNC(slimplexor)
         }
     }
 
+    if (!error)
+    {
+        log_startup_configuration();
+    }
+    
     return error;
 }
 SND_PCM_PLUGIN_SYMBOL(slimplexor)

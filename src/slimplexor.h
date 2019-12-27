@@ -22,10 +22,14 @@
 
 
 /* TODO: logging level from conf */
-#define DBG(fmt, arg...)           /* TODO: parametrize printf("DEBUG: %s: "   fmt "\n", __FUNCTION__ , ## arg) */
-#define INF(fmt, arg...)           fprintf(stderr, "INFO: %s: "    fmt "\n", __FUNCTION__ , ## arg)
-#define ERR(fmt, arg...)           fprintf(stderr, "ERROR: %s: "   fmt "\n", __FUNCTION__ , ## arg)
-#define WRN(fmt, arg...)           fprintf(stderr, "WARNING: %s: " fmt "\n", __FUNCTION__ , ## arg)
+
+/* defined in slimplexor.c */
+extern unsigned int log_level;
+
+#define LOG_DEBUG(fmt, arg...)     if (log_level >= 4) fprintf(stderr, "DEBUG: %s: "   fmt "\n", __FUNCTION__ , ## arg)
+#define LOG_INFO(fmt, arg...)      if (log_level >= 3) fprintf(stderr, "INFO: %s: "    fmt "\n", __FUNCTION__ , ## arg)
+#define LOG_WARNING(fmt, arg...)   if (log_level >= 2) fprintf(stderr, "WARNING: %s: " fmt "\n", __FUNCTION__ , ## arg)
+#define LOG_ERROR(fmt, arg...)     if (log_level >= 1) fprintf(stderr, "ERROR: %s: "   fmt "\n", __FUNCTION__ , ## arg)
 #define ARRAY_SIZE(a)              (sizeof(a)/sizeof((a)[0]))
 #define TARGET_FORMAT              SND_PCM_FORMAT_S32_LE
 #define PERIOD_SIZE_BYTES          16384  /* one period size = 16K bytes */
@@ -66,6 +70,7 @@ int               open_destination_device(plugin_data_t* plugin_data);
 void              close_destination_device(plugin_data_t* plugin_data);
 void              copy_frames(plugin_data_t* plugin_data, unsigned char* pcm_data, snd_pcm_uframes_t frames);
 void              copy_sample(plugin_data_t* plugin_data, unsigned char* source_sample, size_t source_sample_size, unsigned char* target_sample);
+void              log_startup_configuration();
 int               set_src_hw_params(snd_pcm_ioplug_t *io);
 int               set_dst_hw_params(plugin_data_t* plugin_data, snd_pcm_hw_params_t *params);
 int               set_dst_sw_params(plugin_data_t* plugin_data, snd_pcm_sw_params_t *params);

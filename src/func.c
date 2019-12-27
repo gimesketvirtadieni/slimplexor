@@ -66,11 +66,11 @@ void close_destination_device(plugin_data_t* plugin_data)
 
     if ((error = snd_pcm_close(plugin_data->dst_pcm_handle)) < 0)
     {
-        WRN("Error while closing destination device: %s", snd_strerror(error));
+        LOG_WARNING("Error while closing destination device: %s", snd_strerror(error));
     }
     else
     {
-        INF("Destination device was closed");
+        LOG_INFO("Destination device was closed");
     }
 
     if (plugin_data->dst_buffer)
@@ -102,12 +102,6 @@ void copy_frames(plugin_data_t* plugin_data, unsigned char* pcm_data, snd_pcm_uf
         for (unsigned int c = 0; c < plugin_data->alsa_data.channels; c++)
         {
             copy_sample(plugin_data, pcm_data, sample_size, target_data + size_difference);
-
-            /* going through sample-by-sample */
-            //for (unsigned int s = 0; s < sample_size; s++)
-            //{
-            //    target_data[s + size_difference] = pcm_data[s];
-            //}
 
             /* skipping to the next sample representing the next channel */
             pcm_data    += sample_size;
@@ -150,6 +144,33 @@ void copy_sample(plugin_data_t* plugin_data, unsigned char* source_sample, size_
 }
 
 
+void log_startup_configuration()
+{
+    const char* str = NULL;
+    switch (log_level) {
+        case 0:
+            break;
+            str = "NONE";
+        case 1:
+            str = "ERROR";
+            break;
+        case 2:
+            str = "WARNING";
+            break;
+        case 3:
+            str = "INFO";
+            break;
+        case 4:
+            str = "DEBUG";
+            break;
+    }
+    LOG_DEBUG("SlimPlexor plugin was loaded");
+    /* TODO: get from git label */
+    LOG_DEBUG("Version - 0.1.0");
+    LOG_DEBUG("Logging level - %s", str);
+}
+
+
 int open_destination_device(plugin_data_t* plugin_data)
 {
     int                  error     = 0;
@@ -160,7 +181,7 @@ int open_destination_device(plugin_data_t* plugin_data)
     {
         if ((error = snd_pcm_open(&plugin_data->dst_pcm_handle, plugin_data->dst_device, SND_PCM_STREAM_PLAYBACK, 0)) < 0)
         {
-            ERR("Could not open destination device: %s", snd_strerror(error));
+            LOG_ERROR("Could not open destination device: %s", snd_strerror(error));
         }
     }
 
@@ -169,14 +190,14 @@ int open_destination_device(plugin_data_t* plugin_data)
     {
         if ((error = snd_pcm_hw_params_malloc(&hw_params)) < 0)
         {
-            ERR("Could not allocate HW parameters: %s", snd_strerror(error));
+            LOG_ERROR("Could not allocate HW parameters: %s", snd_strerror(error));
         }
     }
     if (!error)
     {
         if ((error = snd_pcm_hw_params_any(plugin_data->dst_pcm_handle, hw_params)) < 0)
         {
-            ERR("Could not fill HW parameters with defaults: %s", snd_strerror(error));
+            LOG_ERROR("Could not fill HW parameters with defaults: %s", snd_strerror(error));
         }
     }
 
@@ -185,51 +206,62 @@ int open_destination_device(plugin_data_t* plugin_data)
     {
         if ((error = snd_pcm_hw_params_set_access(plugin_data->dst_pcm_handle, hw_params, SND_PCM_ACCESS_RW_INTERLEAVED)) < 0)
         {
-            ERR("Could not set destination device access mode: %s", snd_strerror(error));
+            LOG_ERROR("Could not set destination device access mode: %s", snd_strerror(error));
         }
     }
     if (!error)
     {
         if ((error = snd_pcm_hw_params_set_format(plugin_data->dst_pcm_handle, hw_params, plugin_data->dst_format)) < 0)
         {
-            ERR("Could not set destination device format: %s %d", snd_strerror(error), plugin_data->dst_format);
+            LOG_ERROR("Could not set destination device format: %s %d", snd_strerror(error), plugin_data->dst_format);
         }
     }
     if (!error)
     {
         if ((error = snd_pcm_hw_params_set_channels(plugin_data->dst_pcm_handle, hw_params, plugin_data->alsa_data.channels + 1)) < 0)
         {
-            ERR("Could not set amount of channels for destination device: %s", snd_strerror(error));
+            LOG_ERROR("Could not set amount of channels for destination device: %s", snd_strerror(error));
         }
     }
     if (!error)
     {
         if ((error = snd_pcm_hw_params_set_rate(plugin_data->dst_pcm_handle, hw_params, plugin_data->alsa_data.rate, 0)) < 0)
         {
-            ERR("Could not set sample rate for destination device: %s", snd_strerror(error));
+            LOG_ERROR("Could not set sample rate for destination device: %s", snd_strerror(error));
         }
     }
     if (!error)
     {
         if ((error = snd_pcm_hw_params_set_period_size(plugin_data->dst_pcm_handle, hw_params, plugin_data->dst_period_size, 0)) < 0)
         {
-            ERR("Could not set period size for destination device: %s", snd_strerror(error));
+            LOG_ERROR("Could not set period size for destination device: %s", snd_strerror(error));
         }
     }
     if (!error)
     {
         if ((error = snd_pcm_hw_params_set_periods(plugin_data->dst_pcm_handle, hw_params, plugin_data->dst_periods, 0)) < 0)
         {
-            ERR("Could not set amount of periods for destination device: %s", snd_strerror(error));
+            LOG_ERROR("Could not set amount of periods for destination device: %s", snd_strerror(error));
         }
     }
+
+#if SND_LIB_VERSION >= 0x010009
+    /* disabling ALSA resampling */
+    if (!error)
+    {
+        if ((error = snd_pcm_hw_params_set_rate_resample(plugin_data->dst_pcm_handle, hw_params, 0)) < 0)
+        {
+            LOG_ERROR("Could disable ALSA resampling: %s", snd_strerror(error));
+        }
+    }
+#endif
 
     /* saving hardware parameters for target device */
     if (!error)
     {
         if ((error = snd_pcm_hw_params(plugin_data->dst_pcm_handle, hw_params)) < 0)
         {
-            ERR("Could set hardware parameters: %s", snd_strerror(error));
+            LOG_ERROR("Could set hardware parameters: %s", snd_strerror(error));
         }
     }
     if (!hw_params)
@@ -254,14 +286,18 @@ int open_destination_device(plugin_data_t* plugin_data)
             if (!plugin_data->dst_buffer)
             {
                 error = -ENOMEM;
-                ERR("Could not allocate memory for transfer buffer; requested %lu bytes", size_in_bytes);
+                LOG_ERROR("Could not allocate memory for transfer buffer; requested %lu bytes", size_in_bytes);
+            }
+            else
+            {
+                LOG_DEBUG("Transfer buffer was allocated - %ld bytes", size_in_bytes);
             }
         }
         else
         {
             /* TODO: handle this situation more carefully */
             size_t available_bytes = plugin_data->dst_buffer_size * (snd_pcm_format_physical_width(plugin_data->dst_format) >> 3) * (plugin_data->alsa_data.channels + 1);
-            WRN("Buffer is already allocated; available %lu bytes", available_bytes);
+            LOG_WARNING("Buffer is already allocated; available %lu bytes", available_bytes);
         }
     }
 
@@ -285,11 +321,11 @@ int set_dst_hw_params(plugin_data_t* plugin_data, snd_pcm_hw_params_t *params)
     if (!plugin_data->dst_device)
     {
         error = -ENODEV;
-        ERR("Could not find target device for sample rate %u", plugin_data->alsa_data.rate);
+        LOG_ERROR("Could not find target device for sample rate %u", plugin_data->alsa_data.rate);
     }
     else
     {
-        INF("destination device=%s", plugin_data->dst_device);
+        LOG_INFO("destination device=%s", plugin_data->dst_device);
     }
 
     /* collecting details about the PCM stream */
@@ -297,33 +333,33 @@ int set_dst_hw_params(plugin_data_t* plugin_data, snd_pcm_hw_params_t *params)
     {
         if ((error = snd_pcm_hw_params_get_period_size(params, &plugin_data->dst_period_size, 0)) < 0)
         {
-            ERR("Could not get period size value: %s", snd_strerror(error));
+            LOG_ERROR("Could not get period size value: %s", snd_strerror(error));
         }
         else
         {
-            INF("destination period size=%ld", plugin_data->dst_period_size);
+            LOG_INFO("destination period size=%ld", plugin_data->dst_period_size);
         }
     }
     if (!error)
     {
         if ((error = snd_pcm_hw_params_get_periods(params, &plugin_data->dst_periods, 0)) < 0)
         {
-            ERR("Could not get buffer size value: %s", snd_strerror(error));
+            LOG_ERROR("Could not get buffer size value: %s", snd_strerror(error));
         }
         else
         {
-            INF("destination periods=%d", plugin_data->dst_periods);
+            LOG_INFO("destination periods=%d", plugin_data->dst_periods);
         }
     }
     if (!error)
     {
         if ((error = snd_pcm_hw_params_get_format(params, &plugin_data->src_format)) < 0)
         {
-            ERR("Could not get format value: %s", snd_strerror(error));
+            LOG_ERROR("Could not get format value: %s", snd_strerror(error));
         }
         else
         {
-            INF("source format=%d", plugin_data->src_format);
+            LOG_INFO("source format=%d", plugin_data->src_format);
         }
     }
 
@@ -346,28 +382,28 @@ int set_dst_sw_params(plugin_data_t* plugin_data, snd_pcm_sw_params_t *params)
     {
         if ((error = snd_pcm_sw_params_malloc(&sw_params)) < 0)
         {
-            ERR("Could not allocate SW parameters: %s", snd_strerror(error));
+            LOG_ERROR("Could not allocate SW parameters: %s", snd_strerror(error));
         }
     }
     if (!error)
     {
         if ((error = snd_pcm_sw_params_current(plugin_data->dst_pcm_handle, sw_params)) < 0)
         {
-            ERR("Could not fill SW parameters with defaults: %s", snd_strerror(error));
+            LOG_ERROR("Could not fill SW parameters with defaults: %s", snd_strerror(error));
         }
     }
     if (!error)
     {
         if ((error = snd_pcm_sw_params_set_start_threshold(plugin_data->dst_pcm_handle, sw_params, plugin_data->dst_buffer_size)) < 0)
         {
-            ERR("Could not set threshold for destination device: %s", snd_strerror(error));
+            LOG_ERROR("Could not set threshold for destination device: %s", snd_strerror(error));
         }
     }
     if (!error)
     {
         if ((error = snd_pcm_sw_params_set_avail_min(plugin_data->dst_pcm_handle, sw_params, plugin_data->dst_period_size)) < 0)
         {
-            ERR("Could not set min available amount for destination device: %s", snd_strerror(error));
+            LOG_ERROR("Could not set min available amount for destination device: %s", snd_strerror(error));
         }
     }
 
@@ -376,7 +412,7 @@ int set_dst_sw_params(plugin_data_t* plugin_data, snd_pcm_sw_params_t *params)
     {
         if ((error = snd_pcm_sw_params(plugin_data->dst_pcm_handle, sw_params)) < 0)
         {
-            ERR("Could set software parameters: %s", snd_strerror(error));
+            LOG_ERROR("Could set software parameters: %s", snd_strerror(error));
         }
     }
     if (sw_params)
@@ -397,7 +433,7 @@ int set_src_hw_params(snd_pcm_ioplug_t *io)
     {
         if ((error = snd_pcm_ioplug_set_param_list(io, SND_PCM_IOPLUG_HW_ACCESS, ARRAY_SIZE(supported_accesses), supported_accesses)) < 0)
         {
-            ERR("Could not set required access mode: %s", snd_strerror(error));
+            LOG_ERROR("Could not set required access mode: %s", snd_strerror(error));
         }
     }
 
@@ -406,7 +442,7 @@ int set_src_hw_params(snd_pcm_ioplug_t *io)
     {
         if ((error = snd_pcm_ioplug_set_param_list(io, SND_PCM_IOPLUG_HW_FORMAT, ARRAY_SIZE(supported_formats), supported_formats)) < 0)
         {
-            ERR("Could not set required format: %s", snd_strerror(error));
+            LOG_ERROR("Could not set required format: %s", snd_strerror(error));
         }
     }
 
@@ -415,7 +451,7 @@ int set_src_hw_params(snd_pcm_ioplug_t *io)
     {
         if ((error = snd_pcm_ioplug_set_param_list(io, SND_PCM_IOPLUG_HW_CHANNELS, ARRAY_SIZE(supported_channels), supported_channels)) < 0)
         {
-            ERR("Could not set required amount of channels: %s", snd_strerror(error));
+            LOG_ERROR("Could not set required amount of channels: %s", snd_strerror(error));
         }
     }
 
@@ -424,7 +460,7 @@ int set_src_hw_params(snd_pcm_ioplug_t *io)
     {
         if ((error = snd_pcm_ioplug_set_param_list(io, SND_PCM_IOPLUG_HW_RATE, ARRAY_SIZE(supported_rates), supported_rates)) < 0)
         {
-            ERR("Could not set required sample rate: %s", snd_strerror(error));
+            LOG_ERROR("Could not set required sample rate: %s", snd_strerror(error));
         }
     }
 
@@ -433,14 +469,14 @@ int set_src_hw_params(snd_pcm_ioplug_t *io)
     {
         if ((error = snd_pcm_ioplug_set_param_minmax(io, SND_PCM_IOPLUG_HW_PERIOD_BYTES, PERIOD_SIZE_BYTES, PERIOD_SIZE_BYTES)) < 0)
         {
-            ERR("Could not set required period size: %s", snd_strerror(error));
+            LOG_ERROR("Could not set required period size: %s", snd_strerror(error));
         }
     }
     if (!error)
     {
         if ((error = snd_pcm_ioplug_set_param_minmax(io, SND_PCM_IOPLUG_HW_PERIODS, PERIODS, PERIODS)) < 0)
         {
-            ERR("Could not set required amount of periods: %s", snd_strerror(error));
+            LOG_ERROR("Could not set required amount of periods: %s", snd_strerror(error));
         }
     }
 
@@ -458,7 +494,7 @@ void write_stream_marker(plugin_data_t* plugin_data, unsigned char marker)
         result = write_to_dst(plugin_data);
         if (result < 0)
         {
-            ERR("Error while writting to target device: %s", snd_strerror(result));
+            LOG_ERROR("Error while writting to target device: %s", snd_strerror(result));
         }
     }
 
@@ -479,7 +515,7 @@ void write_stream_marker(plugin_data_t* plugin_data, unsigned char marker)
         result = write_to_dst(plugin_data);
         if (result < 0)
         {
-            ERR("Error while writting to target device: %s", snd_strerror(result));
+            LOG_ERROR("Error while writting to target device: %s", snd_strerror(result));
         }
     }
 }
@@ -501,7 +537,7 @@ snd_pcm_sframes_t write_to_dst(plugin_data_t* plugin_data)
             result = snd_pcm_prepare(plugin_data->dst_pcm_handle);
             if (result < 0)
             {
-                ERR("Target device restore error: %s", snd_strerror(result));
+                LOG_ERROR("Target device restore error: %s", snd_strerror(result));
             }
         }
         else if (result == -EAGAIN)
