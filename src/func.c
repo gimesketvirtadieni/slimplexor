@@ -10,8 +10,6 @@
  * Author: gimesketvirtadieni at gmail dot com (Andrej Kislovskij)
  */
 
-#include <stdlib.h>
-
 #include "slimplexor.h"
 
 
@@ -144,9 +142,10 @@ void copy_sample(plugin_data_t* plugin_data, unsigned char* source_sample, size_
 }
 
 
-void log_startup_configuration()
+void log_logging_level()
 {
     const char* str = NULL;
+
     switch (log_level) {
         case 0:
             break;
@@ -164,10 +163,7 @@ void log_startup_configuration()
             str = "DEBUG";
             break;
     }
-    LOG_DEBUG("SlimPlexor plugin was loaded");
-    /* TODO: get from git label */
-    LOG_DEBUG("Version - 0.1.0");
-    LOG_DEBUG("Logging level - %s", str);
+    LOG_INFO("Logging level is %s", str);
 }
 
 

@@ -10,12 +10,13 @@
  * Author: gimesketvirtadieni at gmail dot com (Andrej Kislovskij)
  */
 
-#include <stdlib.h>
-
+#include <unistd.h>  /* fsync(...) */
 #include "slimplexor.h"
+
 
 /* define the default logging level (0 - NONE, 1 - ERROR, 2 - WARNING, 3 - INFO, 4 - DEBUG) */
 unsigned int log_level = 3;
+FILE*        log_file  = NULL;
 
 
 static int callback_close(snd_pcm_ioplug_t *io)
@@ -43,6 +44,9 @@ static int callback_close(snd_pcm_ioplug_t *io)
         close_destination_device(plugin_data);
     }
 
+    /* log file is flushed instead of closing it to be able to log in case of multiple calls to ALSA close routine */
+    fsync(fileno(log_file));
+
     /* close routine may not fail */
     return 0;
 }
@@ -66,9 +70,9 @@ static snd_pcm_sframes_t callback_pointer(snd_pcm_ioplug_t *io)
 {
     plugin_data_t* plugin_data = (plugin_data_t*)io->private_data;
 
-    plugin_data->pointer %= io->buffer_size;
+    LOG_DEBUG("Pointer change callback was called (pointer=%ld, buffer size=%ld)", plugin_data->pointer, io->buffer_size);
 
-    /* LOG_DEBUG("pointer=%ld", plugin_data->pointer); */
+    plugin_data->pointer %= io->buffer_size;
 
     return plugin_data->pointer;
 }
@@ -141,8 +145,13 @@ static snd_pcm_sframes_t callback_transfer(snd_pcm_ioplug_t *io, const snd_pcm_c
 
     /* it's ok to process less frames than provided as ALSA will call this callback with the rest of data */
     /* adjusting amount of frames to be processed, which is max(available,provided) */
-    snd_pcm_uframes_t available_size = plugin_data->dst_buffer_size - plugin_data->dst_buffer_current;
-    snd_pcm_uframes_t frames_processable = max(available_size, frames_provided);
+    snd_pcm_uframes_t available_size     = plugin_data->dst_buffer_size - plugin_data->dst_buffer_current;
+    snd_pcm_uframes_t frames_processable = frames_provided;
+    if (available_size < frames_provided)
+    {
+        LOG_DEBUG("More frames provided than buffer available (frames provided=%lu, available buffer size=%ld)", frames_provided, available_size);
+        frames_processable = available_size;
+    }
 
     /* copying frames from the source buffer to the target buffer */
     copy_frames(plugin_data, pcm_data, frames_processable);
@@ -182,12 +191,13 @@ SND_PCM_PLUGIN_DEFINE_FUNC(slimplexor)
     unsigned short        plugin_created = 0;
     snd_config_iterator_t i;
     snd_config_iterator_t next;
+    const char*           log_level_name;
+    const char*           log_file_name;
 
     snd_config_for_each(i, next, conf)
     {
         snd_config_t* n = snd_config_iterator_entry(i);
         const char*   id;
-        const char*   value;
 
         if (snd_config_get_id(n, &id) < 0)
         {
@@ -202,35 +212,70 @@ SND_PCM_PLUGIN_DEFINE_FUNC(slimplexor)
         /* setting logging level */
         if (strcasecmp(id, "log_level") == 0)
         {
-            if (snd_config_get_string(n, &value) < 0)
+            if (snd_config_get_string(n, &log_level_name) < 0)
             {
                 continue;
             }
 
-            if (strcasecmp(value, "none") == 0)
+            if (strcasecmp(log_level_name, "none") == 0)
             {
                 log_level = 0;
             }
-            else if (strcasecmp(value, "error") == 0)
+            else if (strcasecmp(log_level_name, "error") == 0)
             {
                 log_level = 1;
             }
-            else if (strcasecmp(value, "warning") == 0)
+            else if (strcasecmp(log_level_name, "warning") == 0)
             {
                 log_level = 2;
             }
-            else if (strcasecmp(value, "info") == 0)
+            else if (strcasecmp(log_level_name, "info") == 0)
             {
                 log_level = 3;
             }
-            else if (strcasecmp(value, "debug") == 0)
+            else if (strcasecmp(log_level_name, "debug") == 0)
             {
                 log_level = 4;
             }
-            
+
             continue;
         }
+
+        /* setting log file */
+        if (strcasecmp(id, "log_file") == 0)
+        {
+            if (snd_config_get_string(n, &log_file_name) < 0)
+            {
+                continue;
+            }
+
+            if (strcasecmp(log_file_name, "stdout") == 0)
+            {
+                log_file = stdout;
+            }
+            else if (strcasecmp(log_file_name, "stderr") == 0)
+            {
+                log_file = stderr;
+            }
+            else
+            {
+                /* log file is never closed, which allows support of multiple calls to ALSA close routine */
+                log_file = fopen(log_file_name, "a");
+            }
+        }
     }
+
+    /* making sure log_file is always initialized unless logging level is NONE */
+    if (log_level && !log_file)
+    {
+        log_file      = stdout;
+        log_file_name = "stdout";
+    }
+
+    LOG_INFO("-----------------------------------");
+    LOG_INFO("Loading SlimPlexor v0.1.0 plugin...");
+    log_logging_level();
+    LOG_INFO("Logging destination is %s", log_file_name);
 
     /* allocating memory for plugin data structure and initializing it with zeros */
     if (!error)
@@ -324,10 +369,11 @@ SND_PCM_PLUGIN_DEFINE_FUNC(slimplexor)
         error = set_src_hw_params(&plugin_data->alsa_data);
     }
 
-    /* this assigment must occure only in case when everything went fine */
     if (!error)
     {
+        /* this assignment must occur only in case when everything went fine */
         *pcmp = plugin_data->alsa_data.pcm;
+        LOG_INFO("Plugin was loaded");
     }
     else
     {
@@ -343,11 +389,6 @@ SND_PCM_PLUGIN_DEFINE_FUNC(slimplexor)
         }
     }
 
-    if (!error)
-    {
-        log_startup_configuration();
-    }
-    
     return error;
 }
 SND_PCM_PLUGIN_SYMBOL(slimplexor)
