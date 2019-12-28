@@ -125,13 +125,12 @@ static int callback_sw_params(snd_pcm_ioplug_t *io, snd_pcm_sw_params_t *params)
 }
 
 
-static snd_pcm_sframes_t callback_transfer(snd_pcm_ioplug_t *io, const snd_pcm_channel_area_t *areas, snd_pcm_uframes_t offset, snd_pcm_uframes_t frames_avail)
+static snd_pcm_sframes_t callback_transfer(snd_pcm_ioplug_t *io, const snd_pcm_channel_area_t *areas, snd_pcm_uframes_t offset, snd_pcm_uframes_t frames_provided)
 {
-    plugin_data_t*    plugin_data = (plugin_data_t*)io->private_data;
-    snd_pcm_uframes_t frames      = plugin_data->dst_buffer_size - plugin_data->dst_buffer_current;
-    unsigned char*    pcm_data    = (unsigned char*)areas->addr + (areas->first >> 3) + ((areas->step * offset) >> 3);
+    plugin_data_t* plugin_data = (plugin_data_t*)io->private_data;
+    unsigned char* pcm_data    = (unsigned char*)areas->addr + (areas->first >> 3) + ((areas->step * offset) >> 3);
 
-    LOG_DEBUG("Data transfer callback was invoked - first=%u offset=%lu avail=%lu frames=%lu", areas->first, offset, frames_avail, frames);
+    LOG_DEBUG("Data transfer callback was invoked (offset=%lu, frames provided=%lu, frames already present=%ld)", offset, frames_provided, plugin_data->dst_buffer_current);
 
     /* if this is the first time transfer is called then marking the biginning of PCM stream */
     if (!plugin_data->transfer_started)
@@ -140,15 +139,13 @@ static snd_pcm_sframes_t callback_transfer(snd_pcm_ioplug_t *io, const snd_pcm_c
         plugin_data->transfer_started = 1;
     }
 
+    /* it's ok to process less frames than provided as ALSA will call this callback with the rest of data */
     /* adjusting amount of frames to be processed, which is max(available,provided) */
-    if (frames > frames_avail)
-    {
-        /* it's ok to process less frames than provided as ALSA will call this callback with the rest of data */
-        frames = frames_avail;
-    }
+    snd_pcm_uframes_t available_size = plugin_data->dst_buffer_size - plugin_data->dst_buffer_current;
+    snd_pcm_uframes_t frames_processable = max(available_size, frames_provided);
 
     /* copying frames from the source buffer to the target buffer */
-    copy_frames(plugin_data, pcm_data, frames);
+    copy_frames(plugin_data, pcm_data, frames_processable);
 
     /* writting to the target device */
     snd_pcm_sframes_t result = write_to_dst(plugin_data);
@@ -156,12 +153,13 @@ static snd_pcm_sframes_t callback_transfer(snd_pcm_ioplug_t *io, const snd_pcm_c
     {
         LOG_ERROR("Error while writting to target device: %s", snd_strerror(result));
     }
-    else if (result < frames)
+    else if (result < frames_processable)
     {
-        LOG_WARNING("Less frames were written to the target device than expected - frames=%lu result=%ld", frames, result);
+        LOG_WARNING("Less frames were written to the target device than expected (written frames=%ld, expected to write frames=%ld)", result, frames_processable);
     }
 
-    return result;
+    /* frames are 'consumed' as long as they were coppied to the transfer buffer, even though some are still pending for delivery */
+    return frames_processable;
 }
 
 

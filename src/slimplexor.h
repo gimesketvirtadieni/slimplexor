@@ -26,10 +26,10 @@
 /* defined in slimplexor.c */
 extern unsigned int log_level;
 
-#define LOG_DEBUG(fmt, arg...)     if (log_level >= 4) fprintf(stderr, "DEBUG: %s: "   fmt "\n", __FUNCTION__ , ## arg)
-#define LOG_INFO(fmt, arg...)      if (log_level >= 3) fprintf(stderr, "INFO: %s: "    fmt "\n", __FUNCTION__ , ## arg)
-#define LOG_WARNING(fmt, arg...)   if (log_level >= 2) fprintf(stderr, "WARNING: %s: " fmt "\n", __FUNCTION__ , ## arg)
-#define LOG_ERROR(fmt, arg...)     if (log_level >= 1) fprintf(stderr, "ERROR: %s: "   fmt "\n", __FUNCTION__ , ## arg)
+#define LOG_DEBUG(fmt, arg...)     if (log_level >= 4) fprintf(stderr, "D: %s: "   fmt "\n", __FUNCTION__ , ## arg)
+#define LOG_INFO(fmt, arg...)      if (log_level >= 3) fprintf(stderr, "I: %s: "    fmt "\n", __FUNCTION__ , ## arg)
+#define LOG_WARNING(fmt, arg...)   if (log_level >= 2) fprintf(stderr, "W: %s: " fmt "\n", __FUNCTION__ , ## arg)
+#define LOG_ERROR(fmt, arg...)     if (log_level >= 1) fprintf(stderr, "E: %s: "   fmt "\n", __FUNCTION__ , ## arg)
 #define ARRAY_SIZE(a)              (sizeof(a)/sizeof((a)[0]))
 #define TARGET_FORMAT              SND_PCM_FORMAT_S32_LE
 #define PERIOD_SIZE_BYTES          16384  /* one period size = 16K bytes */
@@ -37,6 +37,12 @@ extern unsigned int log_level;
 #define BEGINNING_OF_STREAM_MARKER 1
 #define END_OF_STREAM_MARKER       2
 #define DATA_MARKER                3
+
+
+#define max(a,b) \
+   ({ __typeof__ (a) _a = (a); \
+       __typeof__ (b) _b = (b); \
+     _a > _b ? _a : _b; })
 
 
 typedef struct rate_device_map
