@@ -15,8 +15,10 @@
 
 
 /* define the default logging level (0 - NONE, 1 - ERROR, 2 - WARNING, 3 - INFO, 4 - DEBUG) */
-unsigned int log_level = 3;
-FILE*        log_file  = NULL;
+unsigned int log_level     = 3;
+FILE*        log_file      = NULL;
+FILE*        pcm_dump_file = NULL;
+char         pcm_dump_file_name[4096];
 
 
 static int callback_close(snd_pcm_ioplug_t *io)
@@ -194,6 +196,9 @@ SND_PCM_PLUGIN_DEFINE_FUNC(slimplexor)
     const char*           log_level_name;
     const char*           log_file_name;
 
+    /* resetting pcm_dump_file_name */
+    pcm_dump_file_name[0] = 0;
+
     snd_config_for_each(i, next, conf)
     {
         snd_config_t* n = snd_config_iterator_entry(i);
@@ -263,6 +268,17 @@ SND_PCM_PLUGIN_DEFINE_FUNC(slimplexor)
                 log_file = fopen(log_file_name, "a");
             }
         }
+
+        /* setting PCM dump file if provided */
+        if (strcasecmp(id, "pcm_dump_file") == 0)
+        {
+            const char* str;
+            if (snd_config_get_string(n, &str) < 0)
+            {
+                continue;
+            }
+            strcpy(pcm_dump_file_name, str);
+        }
     }
 
     /* making sure log_file is always initialized unless logging level is NONE */
@@ -276,6 +292,14 @@ SND_PCM_PLUGIN_DEFINE_FUNC(slimplexor)
     LOG_INFO("Loading SlimPlexor v0.1.0 plugin...");
     log_logging_level();
     LOG_INFO("Logging destination is %s", log_file_name);
+    if (strlen(pcm_dump_file_name))
+    {
+        LOG_INFO("PCM dump file name is %s", pcm_dump_file_name);
+    }
+    else
+    {
+        LOG_INFO("PCM dump file is not used");
+    }
 
     /* allocating memory for plugin data structure and initializing it with zeros */
     if (!error)

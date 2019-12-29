@@ -494,6 +494,12 @@ void write_stream_marker(plugin_data_t* plugin_data, unsigned char marker)
         }
     }
 
+    if (strlen(pcm_dump_file_name) && marker == BEGINNING_OF_STREAM_MARKER)
+    {
+        /* TODO: error handling */
+        pcm_dump_file = fopen(pcm_dump_file_name, "a");
+    }
+
     /* reseting target buffer */
     size_t target_sample_size = (snd_pcm_format_physical_width(plugin_data->dst_format) >> 3);
     size_t target_frame_size  = target_sample_size * (plugin_data->alsa_data.channels + 1);
@@ -513,6 +519,11 @@ void write_stream_marker(plugin_data_t* plugin_data, unsigned char marker)
         {
             LOG_ERROR("Error while writting to target device: %s", snd_strerror(result));
         }
+    }
+
+    if (pcm_dump_file && marker == END_OF_STREAM_MARKER)
+    {
+        fclose(pcm_dump_file);
     }
 }
 
@@ -543,6 +554,14 @@ snd_pcm_sframes_t write_to_dst(plugin_data_t* plugin_data)
         }
         else if (result > 0)
         {
+            /* dumping PCM content if configured */
+            if (pcm_dump_file)
+            {
+                size_t size_in_bytes = (plugin_data->dst_buffer_current * 3) << 2;
+                /* TODO: error handling */
+                fwrite(plugin_data->dst_buffer, 1, size_in_bytes, pcm_dump_file);
+            }
+
             /* if not all data was written then moving reminder of the target buffer to the beginning */
             if (result < plugin_data->dst_buffer_current)
             {
