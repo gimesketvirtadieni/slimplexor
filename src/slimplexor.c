@@ -195,6 +195,7 @@ SND_PCM_PLUGIN_DEFINE_FUNC(slimplexor)
     snd_config_iterator_t next;
     const char*           log_level_name;
     const char*           log_file_name;
+    int                   log_file_open_error = 0;
 
     /* resetting pcm_dump_file_name */
     pcm_dump_file_name[0] = 0;
@@ -266,6 +267,10 @@ SND_PCM_PLUGIN_DEFINE_FUNC(slimplexor)
             {
                 /* log file is never closed, which allows support of multiple calls to ALSA close routine */
                 log_file = fopen(log_file_name, "a");
+                if (!log_file)
+                {
+                    log_file_open_error = errno;
+                }
             }
         }
 
@@ -291,7 +296,15 @@ SND_PCM_PLUGIN_DEFINE_FUNC(slimplexor)
     LOG_INFO("-----------------------------------");
     LOG_INFO("Loading SlimPlexor v0.1.0 plugin...");
     log_logging_level();
-    LOG_INFO("Logging destination is %s", log_file_name);
+    if (!log_file_open_error)
+    {
+        LOG_INFO("Logging destination is %s", log_file_name);
+    }
+    else
+    {
+        LOG_ERROR("Could not open log file defined in configuration, using stdout instead (error=%s, provided file name=%s)", strerror(errno), log_file_name);
+    }
+
     if (strlen(pcm_dump_file_name))
     {
         LOG_INFO("PCM dump file name is %s", pcm_dump_file_name);
