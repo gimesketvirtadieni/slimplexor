@@ -286,23 +286,29 @@ SND_PCM_PLUGIN_DEFINE_FUNC(slimplexor)
         }
     }
 
-    /* making sure log_file is always initialized unless logging level is NONE */
-    if (log_level && !log_file)
+    /* making sure log_file is always initialized */
+    if (!log_file)
     {
-        log_file      = stdout;
-        log_file_name = "stdout";
+        log_file = stdout;
     }
 
     LOG_INFO("-----------------------------------");
     LOG_INFO("Loading SlimPlexor v0.1.0 plugin...");
-    log_logging_level();
-    if (!log_file_open_error)
+    if (log_level)
     {
-        LOG_INFO("Logging destination is %s", log_file_name);
+        LOG_INFO("Logging level is %s", log_level_to_string(log_level));
+        if (!log_file_open_error)
+        {
+            LOG_INFO("Logging destination is %s", log_file_name);
+        }
+        else
+        {
+            LOG_ERROR("Could not open log file defined in configuration, using stdout instead (error=%s, provided file name=%s)", strerror(errno), log_file_name);
+        }
     }
     else
     {
-        LOG_ERROR("Could not open log file defined in configuration, using stdout instead (error=%s, provided file name=%s)", strerror(errno), log_file_name);
+        LOG_INFO("Logging is disabled");
     }
 
     if (strlen(pcm_dump_file_name))
@@ -333,7 +339,7 @@ SND_PCM_PLUGIN_DEFINE_FUNC(slimplexor)
         plugin_data->alsa_data.private_data = plugin_data;
 
         /* TODO: should come from config */
-        plugin_data->rate_device_map_size   = 13;
+        plugin_data->rate_device_map_size = 13;
 
         /* allocating memory for rate->device data structure */
         plugin_data->rate_device_map = calloc(plugin_data->rate_device_map_size, sizeof(rate_device_map_t));
@@ -395,7 +401,9 @@ SND_PCM_PLUGIN_DEFINE_FUNC(slimplexor)
         if ((error = snd_pcm_ioplug_create(&plugin_data->alsa_data, name, stream, mode)) < 0)
         {
             LOG_ERROR("Could not register plugin within ALSA: %s", snd_strerror(error));
-        } else {
+        }
+        else
+        {
             plugin_created = 1;
         }
     }

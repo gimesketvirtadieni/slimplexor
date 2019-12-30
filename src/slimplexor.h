@@ -28,10 +28,10 @@ extern FILE*        log_file;
 extern FILE*        pcm_dump_file;
 extern char         pcm_dump_file_name[4096];
 
-#define LOG_DEBUG(fmt, arg...)     if (log_level >= 4) fprintf(log_file, "D; %s; " fmt "\n", __FUNCTION__ , ## arg)
-#define LOG_INFO(fmt, arg...)      if (log_level >= 3) fprintf(log_file, "I; %s; " fmt "\n", __FUNCTION__ , ## arg)
-#define LOG_WARNING(fmt, arg...)   if (log_level >= 2) fprintf(log_file, "W; %s; " fmt "\n", __FUNCTION__ , ## arg)
-#define LOG_ERROR(fmt, arg...)     if (log_level >= 1) fprintf(log_file, "E; %s; " fmt "\n", __FUNCTION__ , ## arg)
+#define LOG_DEBUG(fmt, arg...)     if (log_level >= 4) fprintf(log_file, "D, %s, " fmt "\n", __FUNCTION__ , ## arg)
+#define LOG_INFO(fmt, arg...)      if (log_level >= 3) fprintf(log_file, "I, %s, " fmt "\n", __FUNCTION__ , ## arg)
+#define LOG_WARNING(fmt, arg...)   if (log_level >= 2) fprintf(log_file, "W, %s, " fmt "\n", __FUNCTION__ , ## arg)
+#define LOG_ERROR(fmt, arg...)     if (log_level >= 1) fprintf(log_file, "E, %s, " fmt "\n", __FUNCTION__ , ## arg)
 
 #define ARRAY_SIZE(a)              (sizeof(a)/sizeof((a)[0]))
 #define TARGET_FORMAT              SND_PCM_FORMAT_S32_LE
@@ -73,7 +73,7 @@ int               open_destination_device(plugin_data_t* plugin_data);
 void              close_destination_device(plugin_data_t* plugin_data);
 void              copy_frames(plugin_data_t* plugin_data, unsigned char* pcm_data, snd_pcm_uframes_t frames);
 void              copy_sample(plugin_data_t* plugin_data, unsigned char* source_sample, size_t source_sample_size, unsigned char* target_sample);
-void              log_logging_level();
+const char*       log_level_to_string();
 int               set_src_hw_params(snd_pcm_ioplug_t *io);
 int               set_dst_hw_params(plugin_data_t* plugin_data, snd_pcm_hw_params_t *params);
 int               set_dst_sw_params(plugin_data_t* plugin_data, snd_pcm_sw_params_t *params);

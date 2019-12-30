@@ -142,28 +142,23 @@ void copy_sample(plugin_data_t* plugin_data, unsigned char* source_sample, size_
 }
 
 
-void log_logging_level()
+const char* log_level_to_string(unsigned int log_level)
 {
-    const char* str = NULL;
-
     switch (log_level) {
         case 0:
-            break;
-            str = "NONE";
+            return "NONE";
         case 1:
-            str = "ERROR";
-            break;
+            return "ERROR";
         case 2:
-            str = "WARNING";
-            break;
+            return "WARNING";
         case 3:
-            str = "INFO";
-            break;
+            return "INFO";
         case 4:
-            str = "DEBUG";
-            break;
+            return "DEBUG";
     }
-    LOG_INFO("Logging level is %s", str);
+
+    /* this should never happen */
+    return "UNKNOWN";
 }
 
 
@@ -247,7 +242,7 @@ int open_destination_device(plugin_data_t* plugin_data)
     {
         if ((error = snd_pcm_hw_params_set_rate_resample(plugin_data->dst_pcm_handle, hw_params, 0)) < 0)
         {
-            LOG_ERROR("Could disable ALSA resampling: %s", snd_strerror(error));
+            LOG_ERROR("Could not disable ALSA resampling: %s", snd_strerror(error));
         }
     }
 #endif
@@ -268,32 +263,30 @@ int open_destination_device(plugin_data_t* plugin_data)
     /* allocating buffer required to transfer data to target device */
     if (!error)
     {
+        /* it will allow multiple calls to set ALSA HW parameters */
+        if (plugin_data->dst_buffer)
+        {
+            free(plugin_data->dst_buffer);
+            plugin_data->dst_buffer = NULL;
+        }
+
+        /* target buffer must not be equal to the source buffer size; otherwise pointer callback will always return 0 */
+        plugin_data->dst_buffer_size    = plugin_data->dst_period_size;
+        plugin_data->dst_buffer_current = 0;
+
+        /* adding extra space for one extra channel */
+        size_t size_in_bytes = plugin_data->dst_buffer_size * (snd_pcm_format_physical_width(plugin_data->dst_format) >> 3) * (plugin_data->alsa_data.channels + 1);
+
+        /* calloc sets content to zero */
+        plugin_data->dst_buffer = (unsigned char*) calloc(1, size_in_bytes);
         if (!plugin_data->dst_buffer)
         {
-            /* target buffer must not be equal to the source buffer size; otherwise pointer callback will always return 0 */
-            plugin_data->dst_buffer_size    = plugin_data->dst_period_size;
-            plugin_data->dst_buffer_current = 0;
-
-            /* adding extra space for one extra channel */
-            size_t size_in_bytes = plugin_data->dst_buffer_size * (snd_pcm_format_physical_width(plugin_data->dst_format) >> 3) * (plugin_data->alsa_data.channels + 1);
-
-            /* calloc sets content to zero */
-            plugin_data->dst_buffer = (unsigned char*) calloc(1, size_in_bytes);
-            if (!plugin_data->dst_buffer)
-            {
-                error = -ENOMEM;
-                LOG_ERROR("Could not allocate memory for transfer buffer; requested %lu bytes", size_in_bytes);
-            }
-            else
-            {
-                LOG_DEBUG("Transfer buffer was allocated - %ld bytes", size_in_bytes);
-            }
+            error = -ENOMEM;
+            LOG_ERROR("Could not allocate memory for transfer buffer; requested %lu bytes", size_in_bytes);
         }
         else
         {
-            /* TODO: handle this situation more carefully */
-            size_t available_bytes = plugin_data->dst_buffer_size * (snd_pcm_format_physical_width(plugin_data->dst_format) >> 3) * (plugin_data->alsa_data.channels + 1);
-            LOG_WARNING("Buffer is already allocated; available %lu bytes", available_bytes);
+            LOG_DEBUG("Transfer buffer was allocated - %ld bytes", size_in_bytes);
         }
     }
 
@@ -561,8 +554,11 @@ snd_pcm_sframes_t write_to_dst(plugin_data_t* plugin_data)
             if (pcm_dump_file)
             {
                 size_t size_in_bytes = (plugin_data->dst_buffer_current * 3) << 2;
-                /* TODO: error handling */
-                fwrite(plugin_data->dst_buffer, 1, size_in_bytes, pcm_dump_file);
+                size_t bytes_written = fwrite(plugin_data->dst_buffer, 1, size_in_bytes, pcm_dump_file);
+                if (bytes_written != size_in_bytes)
+                {
+                    LOG_ERROR("Error while writting PCM data to file (error=%s)", strerror(ferror(pcm_dump_file)));
+                }
             }
 
             /* if not all data was written then moving reminder of the target buffer to the beginning */
