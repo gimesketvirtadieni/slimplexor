@@ -487,7 +487,7 @@ void write_stream_marker(plugin_data_t* plugin_data, unsigned char marker)
         }
     }
 
-    if (strlen(pcm_dump_file_name) && marker == BEGINNING_OF_STREAM_MARKER)
+    if (pcm_dump_file_name && marker == BEGINNING_OF_STREAM_MARKER)
     {
         pcm_dump_file = fopen(pcm_dump_file_name, "a");
         if (!pcm_dump_file)

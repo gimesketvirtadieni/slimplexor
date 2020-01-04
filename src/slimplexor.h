@@ -26,7 +26,7 @@
 extern unsigned int log_level;
 extern FILE*        log_file;
 extern FILE*        pcm_dump_file;
-extern char         pcm_dump_file_name[4096];
+extern char*        pcm_dump_file_name;
 
 #define LOG_DEBUG(fmt, arg...)     if (log_level >= 4) fprintf(log_file, "D, %s, " fmt "\n", __FUNCTION__ , ## arg)
 #define LOG_INFO(fmt, arg...)      if (log_level >= 3) fprintf(log_file, "I, %s, " fmt "\n", __FUNCTION__ , ## arg)

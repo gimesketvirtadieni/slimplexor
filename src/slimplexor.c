@@ -281,11 +281,11 @@ SND_PCM_PLUGIN_DEFINE_FUNC(slimplexor)
             }
 
             /* allocated memory here will be released when plugin is unloaded */
-            pcm_dump_file_name = calloc(1, stdlen(str) + 1);
+            pcm_dump_file_name = calloc(1, strlen(str) + 1);
             if (!pcm_dump_file_name)
             {
                 error = -ENOMEM;
-                LOG_ERROR("Could not allocate memory for dump file name (requested %lu bytes)", stdlen(str) + 1);
+                LOG_ERROR("Could not allocate memory for dump file name (requested %lu bytes)", strlen(str) + 1);
                 break;
             }
             strcpy(pcm_dump_file_name, str);
@@ -319,7 +319,7 @@ SND_PCM_PLUGIN_DEFINE_FUNC(slimplexor)
             LOG_INFO("Logging is disabled");
         }
 
-        if (strlen(pcm_dump_file_name))
+        if (pcm_dump_file_name)
         {
             LOG_INFO("PCM dump file name is %s", pcm_dump_file_name);
         }
