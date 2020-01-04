@@ -15,10 +15,10 @@
 
 
 /* define the default logging level (0 - NONE, 1 - ERROR, 2 - WARNING, 3 - INFO, 4 - DEBUG) */
-unsigned int log_level     = 3;
-FILE*        log_file      = NULL;
-FILE*        pcm_dump_file = NULL;
-char         pcm_dump_file_name[4096];
+unsigned int log_level          = 3;
+FILE*        log_file           = NULL;
+FILE*        pcm_dump_file      = NULL;
+char*        pcm_dump_file_name = NULL;
 
 
 static int callback_close(snd_pcm_ioplug_t *io)
@@ -197,9 +197,6 @@ SND_PCM_PLUGIN_DEFINE_FUNC(slimplexor)
     const char*           log_file_name;
     int                   log_file_open_error = 0;
 
-    /* resetting pcm_dump_file_name */
-    pcm_dump_file_name[0] = 0;
-
     snd_config_for_each(i, next, conf)
     {
         snd_config_t* n = snd_config_iterator_entry(i);
@@ -282,6 +279,15 @@ SND_PCM_PLUGIN_DEFINE_FUNC(slimplexor)
             {
                 continue;
             }
+
+            /* allocated memory here will be released when plugin is unloaded */
+            pcm_dump_file_name = calloc(1, stdlen(str) + 1);
+            if (!pcm_dump_file_name)
+            {
+                error = -ENOMEM;
+                LOG_ERROR("Could not allocate memory for dump file name (requested %lu bytes)", stdlen(str) + 1);
+                break;
+            }
             strcpy(pcm_dump_file_name, str);
         }
     }
@@ -292,32 +298,35 @@ SND_PCM_PLUGIN_DEFINE_FUNC(slimplexor)
         log_file = stdout;
     }
 
-    LOG_INFO("-----------------------------------");
-    LOG_INFO("Loading SlimPlexor v0.1.0 plugin...");
-    if (log_level)
+    if (!error)
     {
-        LOG_INFO("Logging level is %s", log_level_to_string(log_level));
-        if (!log_file_open_error)
+        LOG_INFO("-----------------------------------");
+        LOG_INFO("Loading SlimPlexor v0.1.0 plugin...");
+        if (log_level)
         {
-            LOG_INFO("Logging destination is %s", log_file_name);
+            LOG_INFO("Logging level is %s", log_level_to_string(log_level));
+            if (!log_file_open_error)
+            {
+                LOG_INFO("Logging destination is %s", log_file_name);
+            }
+            else
+            {
+                LOG_ERROR("Could not open log file defined in configuration, using stdout instead (error=%s, provided file name=%s)", strerror(errno), log_file_name);
+            }
         }
         else
         {
-            LOG_ERROR("Could not open log file defined in configuration, using stdout instead (error=%s, provided file name=%s)", strerror(errno), log_file_name);
+            LOG_INFO("Logging is disabled");
         }
-    }
-    else
-    {
-        LOG_INFO("Logging is disabled");
-    }
 
-    if (strlen(pcm_dump_file_name))
-    {
-        LOG_INFO("PCM dump file name is %s", pcm_dump_file_name);
-    }
-    else
-    {
-        LOG_INFO("PCM dump file is not used");
+        if (strlen(pcm_dump_file_name))
+        {
+            LOG_INFO("PCM dump file name is %s", pcm_dump_file_name);
+        }
+        else
+        {
+            LOG_INFO("PCM dump file is not used");
+        }
     }
 
     /* allocating memory for plugin data structure and initializing it with zeros */
@@ -327,6 +336,7 @@ SND_PCM_PLUGIN_DEFINE_FUNC(slimplexor)
         if (!plugin_data)
         {
             error = -ENOMEM;
+            LOG_ERROR("Could not allocate memory for plugin data (requested %lu bytes)", sizeof(plugin_data_t));
         }
     }
 
@@ -338,6 +348,9 @@ SND_PCM_PLUGIN_DEFINE_FUNC(slimplexor)
         plugin_data->alsa_data.callback     = &callbacks;
         plugin_data->alsa_data.private_data = plugin_data;
 
+        /* useing a fixed format while writing to the target device */
+        plugin_data->dst_format = TARGET_FORMAT;
+
         /* TODO: should come from config */
         plugin_data->rate_device_map_size = 13;
 
@@ -346,11 +359,9 @@ SND_PCM_PLUGIN_DEFINE_FUNC(slimplexor)
         if (!plugin_data->rate_device_map)
         {
             error = -ENOMEM;
+            LOG_ERROR("Could not allocate memory for sampling rate mapping (requested %lu bytes)", sizeof(rate_device_map_t));
         }
     }
-
-    /* useing a fixed format while writing to the target device */
-    plugin_data->dst_format = TARGET_FORMAT;
 
     /* TODO: should come from config */
     /* initializing rate->device map data structure */
@@ -408,7 +419,7 @@ SND_PCM_PLUGIN_DEFINE_FUNC(slimplexor)
         }
     }
 
-    /* setting up hw parameters; error is printed within setup routing */
+    /* setting up hw parameters; error is logged by setup function */
     if (!error)
     {
         error = set_src_hw_params(&plugin_data->alsa_data);

@@ -282,11 +282,11 @@ int open_destination_device(plugin_data_t* plugin_data)
         if (!plugin_data->dst_buffer)
         {
             error = -ENOMEM;
-            LOG_ERROR("Could not allocate memory for transfer buffer; requested %lu bytes", size_in_bytes);
+            LOG_ERROR("Could not allocate memory for transfer buffer (requested %lu bytes)", size_in_bytes);
         }
         else
         {
-            LOG_DEBUG("Transfer buffer was allocated - %ld bytes", size_in_bytes);
+            LOG_DEBUG("Transfer buffer was allocated (%ld bytes)", size_in_bytes);
         }
     }
 
