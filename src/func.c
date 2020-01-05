@@ -453,7 +453,7 @@ int set_src_hw_params(snd_pcm_ioplug_t *io)
         }
     }
 
-    /* defining buffer size: bufer = period size * number of periods */
+    /* defining buffer size: buffer = period size * number of periods */
     if (!error)
     {
         if ((error = snd_pcm_ioplug_set_param_minmax(io, SND_PCM_IOPLUG_HW_PERIOD_BYTES, PERIOD_SIZE_BYTES, PERIOD_SIZE_BYTES)) < 0)
@@ -487,6 +487,7 @@ void write_stream_marker(plugin_data_t* plugin_data, unsigned char marker)
         }
     }
 
+    /* opening a dump file if configured and streaming starts */
     if (pcm_dump_file_name && marker == BEGINNING_OF_STREAM_MARKER)
     {
         pcm_dump_file = fopen(pcm_dump_file_name, "a");
@@ -517,6 +518,7 @@ void write_stream_marker(plugin_data_t* plugin_data, unsigned char marker)
         }
     }
 
+    /* closing a dump file if it is opened */
     if (pcm_dump_file && marker == END_OF_STREAM_MARKER)
     {
         fclose(pcm_dump_file);
